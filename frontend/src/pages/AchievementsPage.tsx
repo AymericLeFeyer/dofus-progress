@@ -81,7 +81,6 @@ function buildTree(
   function toNode(cat: CatWithCount): DataNode {
     const children = byParent.get(cat.id);
     const { total, completed } = totals(cat.id);
-    const isCatComplete = total > 0 && completed >= total;
     const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
     const tagColor = pctColor(pct);
 
