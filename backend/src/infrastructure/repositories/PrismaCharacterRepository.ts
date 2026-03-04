@@ -29,17 +29,18 @@ export class PrismaCharacterRepository implements ICharacterRepository {
       },
       orderBy: { createdAt: 'asc' },
     });
-    return rows.map((r) => ({
-      ...this.mapToEntity(r),
-      guildMember: r.guildMember
-        ? {
-            guildId: r.guildMember.guildId,
-            role: r.guildMember.role,
-            joinedAt: r.guildMember.joinedAt,
-            guild: r.guildMember.guild,
-          }
-        : undefined,
-    }));
+    return rows.map((r) =>
+      Object.assign(this.mapToEntity(r), {
+        guildMember: r.guildMember
+          ? {
+              guildId: r.guildMember.guildId,
+              role: r.guildMember.role,
+              joinedAt: r.guildMember.joinedAt,
+              guild: r.guildMember.guild,
+            }
+          : undefined,
+      }),
+    );
   }
 
   async findByName(name: string): Promise<Character | null> {

@@ -42,10 +42,11 @@ export class PrismaGuildRepository implements IGuildRepository {
       include: { character: { select: { id: true, name: true, class: true, level: true } } },
       orderBy: { joinedAt: 'asc' },
     });
-    return rows.map((r) => ({
-      ...this.mapMember(r),
-      character: { id: r.character.id, name: r.character.name, class: r.character.class, level: r.character.level },
-    }));
+    return rows.map((r) =>
+      Object.assign(this.mapMember(r), {
+        character: { id: r.character.id, name: r.character.name, class: r.character.class, level: r.character.level },
+      }),
+    );
   }
 
   async addMember(guildId: string, characterId: string, role: GuildRole): Promise<GuildMember> {
