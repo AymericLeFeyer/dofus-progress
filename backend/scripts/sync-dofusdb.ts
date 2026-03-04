@@ -146,6 +146,7 @@ async function syncAchievements() {
         nameEn: ach.name?.en ?? '',
         descriptionFr: ach.description?.fr ?? null,
         img: ach.img ?? null,
+        questIds: ach.need?.quests ?? [],
       },
       update: {
         categoryId: ach.categoryId,
@@ -156,6 +157,7 @@ async function syncAchievements() {
         nameEn: ach.name?.en ?? '',
         descriptionFr: ach.description?.fr ?? null,
         img: ach.img ?? null,
+        questIds: ach.need?.quests ?? [],
         syncedAt: new Date(),
       },
     }),

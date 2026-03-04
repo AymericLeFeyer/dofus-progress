@@ -260,12 +260,29 @@ export async function progressRoutes(fastify: FastifyInstance) {
         await prisma.characterAchievementProgress.delete({
           where: { characterId_achievementId: { characterId, achievementId: Number(achievementId) } },
         });
-        return { completed: false };
+        return { completed: false, cascadedQuestIds: [] };
       }
-      await prisma.characterAchievementProgress.create({
-        data: { characterId, achievementId: Number(achievementId) },
+
+      // Récupérer les quêtes liées à ce succès
+      const achievement = await prisma.achievement.findUnique({
+        where: { id: Number(achievementId) },
+        select: { questIds: true },
       });
-      return { completed: true };
+      const linkedQuestIds = achievement?.questIds ?? [];
+
+      await prisma.$transaction([
+        prisma.characterAchievementProgress.create({
+          data: { characterId, achievementId: Number(achievementId) },
+        }),
+        ...linkedQuestIds.map((questId) =>
+          prisma.characterQuestProgress.upsert({
+            where: { characterId_questId: { characterId, questId } },
+            create: { characterId, questId, status: 'completed' },
+            update: { status: 'completed' },
+          }),
+        ),
+      ]);
+      return { completed: true, cascadedQuestIds: linkedQuestIds };
     },
   );
 
@@ -281,18 +298,28 @@ export async function progressRoutes(fastify: FastifyInstance) {
 
       const achievements = await prisma.achievement.findMany({
         where: { categoryId: Number(categoryId) },
-        select: { id: true },
+        select: { id: true, questIds: true },
       });
-      await prisma.$transaction(
-        achievements.map((a) =>
+
+      const allQuestIds = [...new Set(achievements.flatMap((a) => a.questIds))];
+
+      await prisma.$transaction([
+        ...achievements.map((a) =>
           prisma.characterAchievementProgress.upsert({
             where: { characterId_achievementId: { characterId, achievementId: a.id } },
             create: { characterId, achievementId: a.id },
             update: {},
           }),
         ),
-      );
-      return { count: achievements.length };
+        ...allQuestIds.map((questId) =>
+          prisma.characterQuestProgress.upsert({
+            where: { characterId_questId: { characterId, questId } },
+            create: { characterId, questId, status: 'completed' },
+            update: { status: 'completed' },
+          }),
+        ),
+      ]);
+      return { count: achievements.length, cascadedQuestCount: allQuestIds.length };
     },
   );
 
