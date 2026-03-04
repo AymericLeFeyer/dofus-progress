@@ -1,0 +1,57 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-dofus}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-dofus_password}
+      POSTGRES_DB: ${DB_NAME:-dofus_progress}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-dofus} -d ${DB_NAME:-dofus_progress}']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      target: development
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-dofus}:${DB_PASSWORD:-dofus_password}@db:5432/${DB_NAME:-dofus_progress}
+      JWT_SECRET: ${JWT_SECRET:-dev_secret_change_in_production}
+      PORT: 3000
+      NODE_ENV: development
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    ports:
+      - '3000:3000'
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "npx prisma db push && npm run dev"
+
+  frontend:
+    build:
+      context: ./frontend
+      target: development
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://backend:3000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - '5173:5173'
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

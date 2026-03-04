@@ -1,0 +1,156 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── User / Auth ───────────────────────────────────────────────────────────────
+
+model User {
+  id           String      @id @default(cuid())
+  email        String      @unique
+  username     String      @unique
+  passwordHash String      @map("password_hash")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  characters   Character[]
+
+  @@map("users")
+}
+
+model Character {
+  id          String            @id @default(cuid())
+  userId      String            @map("user_id")
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String            @unique
+  class       String
+  level       Int               @default(1)
+  createdAt   DateTime          @default(now()) @map("created_at")
+  guildMember GuildMember?
+  ledGuilds   Guild[]           @relation("GuildLeader")
+  invitations GuildInvitation[]
+
+  @@map("characters")
+}
+
+model Guild {
+  id          String            @id @default(cuid())
+  name        String            @unique
+  imageUrl    String?           @map("image_url")
+  leaderId    String            @map("leader_id")
+  leader      Character         @relation("GuildLeader", fields: [leaderId], references: [id])
+  createdAt   DateTime          @default(now()) @map("created_at")
+  members     GuildMember[]
+  invitations GuildInvitation[]
+
+  @@map("guilds")
+}
+
+model GuildMember {
+  guildId     String    @map("guild_id")
+  guild       Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  characterId String    @unique @map("character_id")
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  role        String    @default("member")
+  joinedAt    DateTime  @default(now()) @map("joined_at")
+
+  @@id([guildId, characterId])
+  @@map("guild_members")
+}
+
+model GuildInvitation {
+  id          String    @id @default(cuid())
+  guildId     String    @map("guild_id")
+  guild       Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  characterId String    @map("character_id")
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  token       String    @unique @default(cuid())
+  status      String    @default("pending")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  expiresAt   DateTime  @map("expires_at")
+
+  @@map("guild_invitations")
+}
+
+// ── Encyclopédie (données DofusDB) ────────────────────────────────────────────
+
+model AchievementCategory {
+  id           Int           @id
+  parentId     Int           @default(0) @map("parent_id")
+  nameFr       String        @map("name_fr")
+  nameEn       String        @default("") @map("name_en")
+  color        String?
+  icon         String?
+  order        Int           @default(0)
+  achievements Achievement[]
+
+  @@map("achievement_categories")
+}
+
+model Achievement {
+  id            Int                 @id
+  categoryId    Int                 @map("category_id")
+  category      AchievementCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  points        Int                 @default(0)
+  level         Int                 @default(0)
+  order         Int                 @default(0)
+  nameFr        String              @map("name_fr")
+  nameEn        String              @default("") @map("name_en")
+  descriptionFr String?             @map("description_fr")
+  img           String?
+  syncedAt      DateTime            @default(now()) @map("synced_at")
+
+  @@index([categoryId])
+  @@map("achievements")
+}
+
+model QuestCategory {
+  id     Int     @id
+  nameFr String  @map("name_fr")
+  order  Int     @default(0)
+  quests Quest[]
+
+  @@map("quest_categories")
+}
+
+model Quest {
+  id             Int           @id
+  categoryId     Int           @map("category_id")
+  category       QuestCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  nameFr         String        @map("name_fr")
+  levelMin       Int           @default(0) @map("level_min")
+  levelMax       Int           @default(0) @map("level_max")
+  isDungeonQuest Boolean       @default(false) @map("is_dungeon_quest")
+  isPartyQuest   Boolean       @default(false) @map("is_party_quest")
+  repeatType     Int           @default(0) @map("repeat_type")
+  stepIds        Int[]         @default([]) @map("step_ids")
+  followable     Boolean       @default(false)
+  isEvent        Boolean       @default(false) @map("is_event")
+  syncedAt       DateTime      @default(now()) @map("synced_at")
+
+  @@index([categoryId])
+  @@map("quests")
+}
+
+// ── Progression des personnages ───────────────────────────────────────────────
+
+model CharacterQuestProgress {
+  characterId String   @map("character_id")
+  questId     Int      @map("quest_id")
+  status      String   @default("completed") // "started" | "completed" | "blocked"
+  updatedAt   DateTime @default(now()) @map("updated_at")
+
+  @@id([characterId, questId])
+  @@map("character_quest_progress")
+}
+
+model CharacterAchievementProgress {
+  characterId   String   @map("character_id")
+  achievementId Int      @map("achievement_id")
+  completedAt   DateTime @default(now()) @map("completed_at")
+
+  @@id([characterId, achievementId])
+  @@map("character_achievement_progress")
+}
