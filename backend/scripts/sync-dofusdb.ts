@@ -4,7 +4,8 @@
  * Idempotent : peut être relancé pour mettre à jour les données.
  */
 import axios from 'axios';
-import { prisma } from '../src/infrastructure/prisma/client';
+import { PrismaClient } from '@prisma/client';
+const prisma = new PrismaClient();
 
 const api = axios.create({
   baseURL: 'https://api.dofusdb.fr',
