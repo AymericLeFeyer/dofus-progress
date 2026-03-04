@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Layout,
   List,
@@ -15,9 +15,10 @@ import {
   Skeleton,
   Alert,
   Button,
-  Badge,
   Popconfirm,
   Select,
+  Switch,
+  Pagination,
   theme,
 } from 'antd';
 import {
@@ -31,6 +32,7 @@ import {
   CheckCircleFilled,
   CheckSquareOutlined,
   CheckOutlined,
+  EyeInvisibleOutlined,
 } from '@ant-design/icons';
 import type { QuestCategory, Quest, QuestStep } from '../types/dofusdb';
 import { dofusdbService, levelRange } from '../services/dofusdb.service';
@@ -82,22 +84,18 @@ export function QuestsPage() {
   const [selectedCat, setSelectedCat] = useState<(QuestCategory & { questCount?: number }) | null>(null);
   const [isSynced, setIsSynced] = useState(true);
   const [quests, setQuests] = useState<Quest[]>([]);
-  const [total, setTotal] = useState(0);
   const [loadingCats, setLoadingCats] = useState(true);
   const [loadingQuests, setLoadingQuests] = useState(false);
   const [completeAllLoading, setCompleteAllLoading] = useState(false);
   const [catSearch, setCatSearch] = useState('');
   const [questSearch, setQuestSearch] = useState('');
+  const [hideCompleted, setHideCompleted] = useState(false);
+  const [page, setPage] = useState(1);
 
   // Drawer
   const [drawerQuest, setDrawerQuest] = useState<Quest | null>(null);
   const [steps, setSteps] = useState<QuestStep[]>([]);
   const [loadingSteps, setLoadingSteps] = useState(false);
-
-  // Sentinel pour l'infinite scroll
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
-  const loadingRef = useRef(false);
-  const skipRef = useRef(0);
 
   useEffect(() => {
     dofusdbService
@@ -113,60 +111,19 @@ export function QuestsPage() {
       });
   }, []);
 
-  const loadQuests = useCallback(async (catId: number, currentSkip: number, reset: boolean) => {
-    if (loadingRef.current) return;
-    loadingRef.current = true;
-    setLoadingQuests(true);
-    try {
-      const res = await dofusdbService.getQuests(catId, currentSkip, PAGE_SIZE);
-      setTotal(res.total);
-      if (reset) {
-        setQuests(res.data);
-        skipRef.current = res.data.length;
-      } else {
-        setQuests((prev) => {
-          const next = [...prev, ...res.data];
-          skipRef.current = next.length;
-          return next;
-        });
-      }
-    } finally {
-      setLoadingQuests(false);
-      loadingRef.current = false;
-    }
-  }, []);
-
-  const selectCategory = (cat: QuestCategory & { questCount?: number }) => {
+  const selectCategory = useCallback(async (cat: QuestCategory & { questCount?: number }) => {
     setSelectedCat(cat);
     setQuestSearch('');
+    setPage(1);
     setQuests([]);
-    skipRef.current = 0;
-    loadQuests(cat.id, 0, true);
-  };
-
-  // Infinite scroll via IntersectionObserver
-  useEffect(() => {
-    const sentinel = sentinelRef.current;
-    if (!sentinel) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && !loadingRef.current && selectedCat) {
-          setQuests((prev) => {
-            setTotal((t) => {
-              if (prev.length < t) {
-                loadQuests(selectedCat.id, skipRef.current, false);
-              }
-              return t;
-            });
-            return prev;
-          });
-        }
-      },
-      { threshold: 0.1 },
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [selectedCat, loadQuests]);
+    setLoadingQuests(true);
+    try {
+      const all = await dofusdbService.getAllQuestsForCategory(cat.id);
+      setQuests(all);
+    } finally {
+      setLoadingQuests(false);
+    }
+  }, []);
 
   const openQuestDetail = async (quest: Quest) => {
     setDrawerQuest(quest);
@@ -198,10 +155,22 @@ export function QuestsPage() {
   }, [categories, catSearch]);
 
   const filteredQuests = useMemo(() => {
-    if (!questSearch) return quests;
-    const q = questSearch.toLowerCase();
-    return quests.filter((quest) => quest.name.fr.toLowerCase().includes(q));
-  }, [quests, questSearch]);
+    let result = quests;
+    if (hideCompleted) result = result.filter((q) => !completedQuestIds.has(q.id));
+    if (questSearch) {
+      const q = questSearch.toLowerCase();
+      result = result.filter((quest) => quest.name.fr.toLowerCase().includes(q));
+    }
+    return result;
+  }, [quests, questSearch, hideCompleted, completedQuestIds]);
+
+  const pagedQuests = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return filteredQuests.slice(start, start + PAGE_SIZE);
+  }, [filteredQuests, page]);
+
+  // Revenir à la page 1 quand les filtres changent
+  useEffect(() => { setPage(1); }, [questSearch, hideCompleted]);
 
   const catIsComplete = (cat: QuestCategory & { questCount?: number }) => {
     const catTotal = cat.questCount ?? cat.questIds?.length ?? 0;
@@ -214,7 +183,6 @@ export function QuestsPage() {
   const selectedCatStarted = startedQuestCategoryProgress[selectedCat?.id ?? 0] ?? 0;
   const selectedCatBlocked = blockedQuestCategoryProgress[selectedCat?.id ?? 0] ?? 0;
   const selectedCatIsComplete = selectedCatTotal > 0 && selectedCatCompleted >= selectedCatTotal;
-  const hasMore = quests.length < total && !questSearch;
 
   return (
     <Layout style={{ height: 'calc(100vh - 112px)', background: 'transparent', flexDirection: 'column' }}>
@@ -334,19 +302,16 @@ export function QuestsPage() {
                                 color: '#52c41a',
                               }}
                             >
-                              ✓ {catTotal}
+                              100%
                             </Tag>
                           ) : completed > 0 ? (
                             <Tag style={{ fontSize: 10, padding: '0 4px', margin: 0 }}>
-                              {completed}/{catTotal}
+                              {Math.round((completed / catTotal) * 100)}%
                             </Tag>
                           ) : (
-                            <Badge
-                              count={catTotal}
-                              size="small"
-                              style={{ backgroundColor: '#d9d9d9', color: '#666', fontSize: 10 }}
-                              overflowCount={999}
-                            />
+                            <Tag style={{ fontSize: 10, padding: '0 4px', margin: 0, color: '#8c8c8c', borderColor: '#d9d9d9' }}>
+                              0%
+                            </Tag>
                           )}
                         </div>
                         {(started > 0 || blocked > 0) && (
@@ -398,7 +363,7 @@ export function QuestsPage() {
                 </Title>
                 <Space size={8}>
                   <Text type="secondary">
-                    {selectedCatCompleted}/{total} terminée{total > 1 ? 's' : ''}
+                    {selectedCatCompleted}/{quests.length} terminée{quests.length > 1 ? 's' : ''}
                   </Text>
                   {selectedCatStarted > 0 && (
                     <Tag color="blue" style={{ margin: 0 }}>{selectedCatStarted} en cours</Tag>
@@ -428,6 +393,17 @@ export function QuestsPage() {
                   </Button>
                 </Popconfirm>
               )}
+              {selectedCat && selectedCharacterId && (
+                <Tooltip title="Masquer les quêtes terminées">
+                  <Switch
+                    size="small"
+                    checked={hideCompleted}
+                    onChange={setHideCompleted}
+                    checkedChildren={<EyeInvisibleOutlined />}
+                    unCheckedChildren={<EyeInvisibleOutlined />}
+                  />
+                </Tooltip>
+              )}
               {selectedCat && (
                 <Search
                   placeholder="Rechercher une quête..."
@@ -455,8 +431,20 @@ export function QuestsPage() {
               <Empty description="Aucune quête trouvée" />
             ) : (
               <>
+                {filteredQuests.length > PAGE_SIZE && (
+                  <div style={{ textAlign: 'center', padding: '0 0 12px' }}>
+                    <Pagination
+                      current={page}
+                      pageSize={PAGE_SIZE}
+                      total={filteredQuests.length}
+                      onChange={setPage}
+                      showSizeChanger={false}
+                      size="small"
+                    />
+                  </div>
+                )}
                 <List
-                  dataSource={filteredQuests}
+                  dataSource={pagedQuests}
                   style={{ background: token.colorBgContainer, borderRadius: 8, boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}
                   renderItem={(quest) => {
                     const status = getQuestStatus(quest.id, completedQuestIds, startedQuestIds, blockedQuestIds);
@@ -471,9 +459,16 @@ export function QuestsPage() {
                     );
                   }}
                 />
-                {hasMore && (
-                  <div ref={sentinelRef} style={{ textAlign: 'center', padding: 16 }}>
-                    {loadingQuests && <Spin size="small" />}
+                {filteredQuests.length > PAGE_SIZE && (
+                  <div style={{ textAlign: 'center', padding: '12px 0' }}>
+                    <Pagination
+                      current={page}
+                      pageSize={PAGE_SIZE}
+                      total={filteredQuests.length}
+                      onChange={setPage}
+                      showSizeChanger={false}
+                      size="small"
+                    />
                   </div>
                 )}
               </>

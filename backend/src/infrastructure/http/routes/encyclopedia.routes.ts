@@ -47,7 +47,7 @@ export async function encyclopediaRoutes(fastify: FastifyInstance) {
         where,
         orderBy: { order: 'asc' },
         skip: Number(skip),
-        take: Math.min(Number(limit), 100),
+        take: Math.min(Number(limit), 2000),
       }),
       prisma.achievement.count({ where }),
     ]);
@@ -146,7 +146,7 @@ export async function encyclopediaRoutes(fastify: FastifyInstance) {
         where,
         orderBy: { id: 'asc' },
         skip: Number(skip),
-        take: Math.min(Number(limit), 100),
+        take: Math.min(Number(limit), 2000),
       }),
       prisma.quest.count({ where }),
     ]);

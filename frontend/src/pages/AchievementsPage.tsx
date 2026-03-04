@@ -14,6 +14,7 @@ import {
   Button,
   Alert,
   Popconfirm,
+  Pagination,
   theme,
 } from 'antd';
 import type { DataNode } from 'antd/es/tree';
@@ -21,14 +22,13 @@ import {
   SearchOutlined,
   TrophyOutlined,
   StarOutlined,
-  LoadingOutlined,
   SyncOutlined,
   CheckCircleFilled,
   CheckCircleOutlined,
   CheckSquareOutlined,
 } from '@ant-design/icons';
 import type { AchievementCategory, Achievement } from '../types/dofusdb';
-import { dofusdbService, dofusColor, pointsColor } from '../services/dofusdb.service';
+import { dofusdbService, pointsColor } from '../services/dofusdb.service';
 import { useCharacterStore } from '../stores/characterStore';
 import { useProgressStore } from '../stores/progressStore';
 
@@ -36,7 +36,7 @@ const { Content } = Layout;
 const { Text, Title, Paragraph } = Typography;
 const { Search } = Input;
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 40;
 
 type CatWithCount = AchievementCategory & { achievementCount?: number };
 
@@ -72,41 +72,34 @@ function buildTree(
     );
   }
 
+  function pctColor(pct: number): string {
+    // Rouge (0°) → vert (120°) via HSL
+    const hue = Math.round(pct * 1.2);
+    return `hsl(${hue}, 65%, 42%)`;
+  }
+
   function toNode(cat: CatWithCount): DataNode {
     const children = byParent.get(cat.id);
-    const color = dofusColor(cat.color);
     const { total, completed } = totals(cat.id);
     const isCatComplete = total > 0 && completed >= total;
+    const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const tagColor = pctColor(pct);
 
     const title = (
       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        {isCatComplete ? (
-          <CheckCircleFilled style={{ color: '#52c41a', fontSize: 10, flexShrink: 0 }} />
-        ) : (
-          <span
-            style={{
-              width: 10,
-              height: 10,
-              borderRadius: '50%',
-              background: color,
-              display: 'inline-block',
-              flexShrink: 0,
-            }}
-          />
-        )}
-        <span style={{ flex: 1, color: isCatComplete ? '#52c41a' : undefined }}>{cat.name.fr}</span>
+        <span style={{ flex: 1 }}>{cat.name.fr}</span>
         {total > 0 && (
           <Tag
             style={{
               fontSize: 10,
               padding: '0 4px',
               margin: 0,
-              backgroundColor: isCatComplete ? '#f6ffed' : color + '22',
-              borderColor: isCatComplete ? '#52c41a' : color,
-              color: isCatComplete ? '#52c41a' : undefined,
+              backgroundColor: tagColor + '22',
+              borderColor: tagColor,
+              color: tagColor,
             }}
           >
-            {isCatComplete ? `✓ ${total}` : `${completed}/${total}`}
+            {pct}%
           </Tag>
         )}
       </span>
@@ -140,11 +133,10 @@ export function AchievementsPage() {
   const [selectedCatName, setSelectedCatName] = useState('');
   const [selectedCatTotal, setSelectedCatTotal] = useState(0);
   const [achievements, setAchievements] = useState<Achievement[]>([]);
-  const [total, setTotal] = useState(0);
-  const [skip, setSkip] = useState(0);
   const [loadingCats, setLoadingCats] = useState(true);
   const [loadingAch, setLoadingAch] = useState(false);
   const [completeAllLoading, setCompleteAllLoading] = useState(false);
+  const [page, setPage] = useState(1);
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
   const [searchValue, setSearchValue] = useState('');
   const [isSynced, setIsSynced] = useState(true);
@@ -155,8 +147,6 @@ export function AchievementsPage() {
       .then((cats) => {
         setIsSynced(cats.length > 0);
         setCategories(cats);
-        const roots = cats.filter((c) => c.parentId === 0).map((c) => String(c.id));
-        setExpandedKeys(roots);
         setLoadingCats(false);
       })
       .catch(() => {
@@ -172,13 +162,14 @@ export function AchievementsPage() {
     setTreeNodes(nodes);
   }, [categories, achievementCategoryProgress]);
 
-  const loadAchievements = useCallback(async (catId: number, currentSkip: number, reset: boolean) => {
+  const loadAchievements = useCallback(async (catId: number) => {
     setLoadingAch(true);
-    const res = await dofusdbService.getAchievements(catId, currentSkip, PAGE_SIZE);
-    setTotal(res.total);
-    if (reset) setAchievements(res.data);
-    else setAchievements((prev) => [...prev, ...res.data]);
-    setLoadingAch(false);
+    try {
+      const all = await dofusdbService.getAllAchievementsForCategory(catId);
+      setAchievements(all);
+    } finally {
+      setLoadingAch(false);
+    }
   }, []);
 
   const onSelectCategory = (keys: React.Key[]) => {
@@ -188,14 +179,9 @@ export function AchievementsPage() {
     setSelectedCatId(id);
     setSelectedCatName(cat?.name.fr ?? '');
     setSelectedCatTotal(cat?.achievementCount ?? 0);
-    setSkip(0);
-    loadAchievements(id, 0, true);
-  };
-
-  const loadMore = () => {
-    const newSkip = skip + PAGE_SIZE;
-    setSkip(newSkip);
-    loadAchievements(selectedCatId!, newSkip, false);
+    setPage(1);
+    setAchievements([]);
+    loadAchievements(id);
   };
 
   const handleToggle = async (achievementId: number) => {
@@ -207,9 +193,6 @@ export function AchievementsPage() {
     if (!selectedCharacterId || !selectedCatId) return;
     setCompleteAllLoading(true);
     await completeAllAchievements(selectedCharacterId, selectedCatId);
-    // Recharge les succès affichés pour refléter le nouvel état
-    await loadAchievements(selectedCatId, 0, true);
-    setSkip(0);
     setCompleteAllLoading(false);
   };
 
@@ -221,7 +204,13 @@ export function AchievementsPage() {
     );
   }, [achievements, searchValue]);
 
-  const hasMore = achievements.length < total;
+  const pagedAchievements = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return filtered.slice(start, start + PAGE_SIZE);
+  }, [filtered, page]);
+
+  useEffect(() => { setPage(1); }, [searchValue]);
+
   const completedInCat = achievementCategoryProgress[selectedCatId ?? 0] ?? 0;
   const catIsComplete = selectedCatTotal > 0 && completedInCat >= selectedCatTotal;
 
@@ -364,8 +353,20 @@ export function AchievementsPage() {
               <Empty description="Aucun succès trouvé" />
             ) : (
               <>
+                {filtered.length > PAGE_SIZE && (
+                  <div style={{ textAlign: 'center', padding: '0 0 12px' }}>
+                    <Pagination
+                      current={page}
+                      pageSize={PAGE_SIZE}
+                      total={filtered.length}
+                      onChange={setPage}
+                      showSizeChanger={false}
+                      size="small"
+                    />
+                  </div>
+                )}
                 <Row gutter={[12, 12]}>
-                  {filtered.map((ach) => (
+                  {pagedAchievements.map((ach) => (
                     <Col key={ach.id} xs={24} sm={12} xl={8}>
                       <AchievementCard
                         achievement={ach}
@@ -376,16 +377,16 @@ export function AchievementsPage() {
                     </Col>
                   ))}
                 </Row>
-                {hasMore && !searchValue && (
-                  <div style={{ textAlign: 'center', padding: '16px 0' }}>
-                    <Button onClick={loadMore} loading={loadingAch}>
-                      Charger plus ({achievements.length} / {total})
-                    </Button>
-                  </div>
-                )}
-                {loadingAch && achievements.length > 0 && (
-                  <div style={{ textAlign: 'center', padding: 12 }}>
-                    <Spin indicator={<LoadingOutlined />} />
+                {filtered.length > PAGE_SIZE && (
+                  <div style={{ textAlign: 'center', padding: '12px 0' }}>
+                    <Pagination
+                      current={page}
+                      pageSize={PAGE_SIZE}
+                      total={filtered.length}
+                      onChange={setPage}
+                      showSizeChanger={false}
+                      size="small"
+                    />
                   </div>
                 )}
               </>

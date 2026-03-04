@@ -1,16 +1,18 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Select, Checkbox, Button, Card, Tag, Space, Typography,
-  Spin, Row, Col, Empty, Tooltip,
+  Spin, Row, Col, Empty, Tooltip, InputNumber,
 } from 'antd';
 import {
   ThunderboltOutlined, BookOutlined, TrophyOutlined,
-  ReloadOutlined, CompassOutlined,
+  ReloadOutlined, CompassOutlined, CheckOutlined,
 } from '@ant-design/icons';
 import type { GuildMemberProgress } from '../../services/progress.service';
 import { dofusdbService, levelRange, pointsColor } from '../../services/dofusdb.service';
 import type { Dungeon, Achievement } from '../../types/dofusdb';
 import { ClassAvatar } from '../character/ClassAvatar';
+import { useCharacterStore } from '../../stores/characterStore';
+import { useProgressStore } from '../../stores/progressStore';
 
 const { Text } = Typography;
 
@@ -53,19 +55,29 @@ function MemberAvatars({ members }: { members: GuildMemberProgress[] }) {
 }
 
 function SuggestionItem({
-  title, tags, members, imgUrl,
+  title, tags, members, imgUrl, isValidated, onValidate, canValidate,
 }: {
   title: string;
   tags: TagDef[];
   members: GuildMemberProgress[];
   imgUrl?: string;
+  isValidated: boolean;
+  canValidate: boolean;
+  onValidate: () => Promise<void>;
 }) {
+  const [loading, setLoading] = useState(false);
+
+  const handleValidate = async () => {
+    setLoading(true);
+    try { await onValidate(); } finally { setLoading(false); }
+  };
+
   return (
     <div style={{
       padding: '10px 12px',
       borderRadius: 6,
-      border: '1px solid rgba(0,0,0,0.08)',
-      background: 'rgba(0,0,0,0.02)',
+      border: `1px solid ${isValidated ? '#b7eb8f' : 'rgba(0,0,0,0.08)'}`,
+      background: isValidated ? '#f6ffed' : 'rgba(0,0,0,0.02)',
       display: 'flex',
       gap: 10,
       alignItems: 'flex-start',
@@ -80,7 +92,7 @@ function SuggestionItem({
         />
       )}
       <Space direction="vertical" size={6} style={{ width: '100%', flex: 1 }}>
-        <Text strong style={{ fontSize: 13 }}>{title}</Text>
+        <Text strong style={{ fontSize: 13, textDecoration: isValidated ? 'line-through' : undefined, color: isValidated ? '#52c41a' : undefined }}>{title}</Text>
         {tags.length > 0 && (
           <Space size={4} wrap>
             {tags.map((tag, i) => (
@@ -90,7 +102,24 @@ function SuggestionItem({
             ))}
           </Space>
         )}
-        <MemberAvatars members={members} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <MemberAvatars members={members} />
+          {canValidate && (
+            <Button
+              size="small"
+              icon={isValidated ? <CheckOutlined /> : undefined}
+              loading={loading}
+              onClick={handleValidate}
+              disabled={isValidated}
+              style={isValidated
+                ? { fontSize: 11, background: '#f6ffed', borderColor: '#52c41a', color: '#52c41a' }
+                : { fontSize: 11, background: '#c0902b', borderColor: '#c0902b', color: '#fff' }
+              }
+            >
+              {isValidated ? 'Validé' : 'Valider'}
+            </Button>
+          )}
+        </div>
       </Space>
     </div>
   );
@@ -108,9 +137,16 @@ export function ActivityTab({ guildProgress, dungeonMap, catNames }: Props) {
   const [beneficialToAll, setBeneficialToAll] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestions | null>(null);
   const [loading, setLoading] = useState(false);
+  const [count, setCount] = useState(3);
   const [achCatNames, setAchCatNames] = useState<Record<number, string>>({});
   const [allQuests, setAllQuests] = useState<QuestStub[]>([]);
   const [allAchievements, setAllAchievements] = useState<Achievement[]>([]);
+
+  const { selectedCharacterId } = useCharacterStore();
+  const {
+    completedQuestIds, completedAchievementIds, doneDungeonIds,
+    setQuestStatus, toggleAchievement, setDungeonStatus,
+  } = useProgressStore();
 
   useEffect(() => {
     dofusdbService.getAllAchievementCategories().then((cats) => {
@@ -178,17 +214,17 @@ export function ActivityTab({ guildProgress, dungeonMap, catNames }: Props) {
 
       if (selectedTypes.includes('quests')) {
         const pool = applyFilter(allQuests, (q) => q.id, memberNeedsQuest);
-        result.quests = shuffle(pool).slice(0, 3);
+        result.quests = shuffle(pool).slice(0, count);
       }
 
       if (selectedTypes.includes('dungeons')) {
         const pool = applyFilter([...dungeonMap.values()], (d) => d.id, memberNeedsDungeon);
-        result.dungeons = shuffle(pool).slice(0, 3);
+        result.dungeons = shuffle(pool).slice(0, count);
       }
 
       if (selectedTypes.includes('achievements')) {
         const pool = applyFilter(allAchievements, (a) => a.id, memberNeedsAchievement);
-        result.achievements = shuffle(pool).slice(0, 3);
+        result.achievements = shuffle(pool).slice(0, count);
       }
 
       setSuggestions(result);
@@ -283,6 +319,18 @@ export function ActivityTab({ guildProgress, dungeonMap, catNames }: Props) {
             </Text>
           </Checkbox>
 
+          <Space align="center">
+            <Text type="secondary" style={{ fontSize: 13 }}>Suggestions par type :</Text>
+            <InputNumber
+              min={1}
+              max={10}
+              value={count}
+              onChange={(v) => setCount(v ?? 3)}
+              size="small"
+              style={{ width: 60 }}
+            />
+          </Space>
+
           <Button
             type="primary"
             icon={suggestions ? <ReloadOutlined /> : <TrophyOutlined />}
@@ -329,6 +377,9 @@ export function ActivityTab({ guildProgress, dungeonMap, catNames }: Props) {
                           quest.isEvent ? { label: 'Événement', color: 'cyan' } : null,
                         ].filter(Boolean) as TagDef[]}
                         members={getMembersForItem(quest.id, memberNeedsQuest)}
+                        isValidated={completedQuestIds.has(quest.id)}
+                        canValidate={!!selectedCharacterId}
+                        onValidate={() => setQuestStatus(selectedCharacterId!, quest.id, 'completed')}
                       />
                     ))}
                   </Space>
@@ -357,6 +408,9 @@ export function ActivityTab({ guildProgress, dungeonMap, catNames }: Props) {
                           dungeon.level > 0 ? { label: `Niv. ${dungeon.level}`, color: 'orange' } : null,
                         ].filter(Boolean) as TagDef[]}
                         members={getMembersForItem(dungeon.id, memberNeedsDungeon)}
+                        isValidated={doneDungeonIds.has(dungeon.id)}
+                        canValidate={!!selectedCharacterId}
+                        onValidate={() => setDungeonStatus(selectedCharacterId!, dungeon.id, { isDone: true })}
                       />
                     ))}
                   </Space>
@@ -387,6 +441,9 @@ export function ActivityTab({ guildProgress, dungeonMap, catNames }: Props) {
                           ach.points > 0 ? { label: `${ach.points} pts`, color: pointsColor(ach.points) } : null,
                         ].filter(Boolean) as TagDef[]}
                         members={getMembersForItem(ach.id, memberNeedsAchievement)}
+                        isValidated={completedAchievementIds.has(ach.id)}
+                        canValidate={!!selectedCharacterId && !completedAchievementIds.has(ach.id)}
+                        onValidate={() => toggleAchievement(selectedCharacterId!, ach.id)}
                       />
                     ))}
                   </Space>

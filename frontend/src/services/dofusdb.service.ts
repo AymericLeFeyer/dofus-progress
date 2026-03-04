@@ -55,6 +55,22 @@ export const dofusdbService = {
     return data;
   },
 
+  async getAllAchievementsForCategory(categoryId: number): Promise<Achievement[]> {
+    const PAGE = 500;
+    const first = await api.get<DofusDBResponse<Achievement>>('/achievements', {
+      params: { categoryId, skip: 0, limit: PAGE },
+    });
+    const { total, data } = first.data;
+    const all = [...data];
+    for (let skip = PAGE; skip < total; skip += PAGE) {
+      const { data: res } = await api.get<DofusDBResponse<Achievement>>('/achievements', {
+        params: { categoryId, skip, limit: PAGE },
+      });
+      all.push(...res.data);
+    }
+    return all;
+  },
+
   // ── Quests (depuis le backend/DB) ────────────────────────────────────────────
 
   async getAllQuestCategories(): Promise<(QuestCategory & { questCount: number })[]> {
@@ -76,6 +92,22 @@ export const dofusdbService = {
       params: { categoryId, skip, limit, ...(search ? { search } : {}) },
     });
     return data;
+  },
+
+  async getAllQuestsForCategory(categoryId: number): Promise<Quest[]> {
+    const PAGE = 500;
+    const first = await api.get<DofusDBResponse<Quest>>('/quests', {
+      params: { categoryId, skip: 0, limit: PAGE },
+    });
+    const { total, data } = first.data;
+    const all = [...data];
+    for (let skip = PAGE; skip < total; skip += PAGE) {
+      const { data: res } = await api.get<DofusDBResponse<Quest>>('/quests', {
+        params: { categoryId, skip, limit: PAGE },
+      });
+      all.push(...res.data);
+    }
+    return all;
   },
 
   async getQuestsByIds(ids: number[]): Promise<Pick<Quest, 'id' | 'name' | 'categoryId' | 'levelMin' | 'levelMax' | 'isDungeonQuest' | 'isPartyQuest' | 'isEvent'>[]> {
