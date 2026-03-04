@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Cup body -->
+  <path d="M30 15 h40 v30 q0 20 -20 25 q-20 -5 -20 -25 Z" fill="#c0902b"/>
+  <!-- Handles -->
+  <path d="M30 22 q-15 0 -15 15 q0 12 15 15" fill="none" stroke="#c0902b" stroke-width="6" stroke-linecap="round"/>
+  <path d="M70 22 q15 0 15 15 q0 12 -15 15" fill="none" stroke="#c0902b" stroke-width="6" stroke-linecap="round"/>
+  <!-- Stem -->
+  <rect x="44" y="70" width="12" height="12" fill="#c0902b"/>
+  <!-- Base -->
+  <rect x="33" y="82" width="34" height="6" rx="3" fill="#c0902b"/>
+  <!-- Shine -->
+  <path d="M38 20 q5 -3 10 0" fill="none" stroke="#f5d08a" stroke-width="3" stroke-linecap="round"/>
+</svg>

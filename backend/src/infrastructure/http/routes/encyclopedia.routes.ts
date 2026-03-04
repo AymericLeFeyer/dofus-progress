@@ -84,6 +84,25 @@ export async function encyclopediaRoutes(fastify: FastifyInstance) {
     }));
   });
 
+  // ── Quests all (lightweight, for activity picker) ───────────────────────────
+
+  fastify.get('/quests/all', async () => {
+    const data = await prisma.quest.findMany({
+      select: { id: true, nameFr: true, categoryId: true, levelMin: true, levelMax: true, isDungeonQuest: true, isPartyQuest: true, isEvent: true },
+      orderBy: { id: 'asc' },
+    });
+    return data.map((q) => ({
+      id: q.id,
+      name: { fr: q.nameFr },
+      categoryId: q.categoryId,
+      levelMin: q.levelMin,
+      levelMax: q.levelMax,
+      isDungeonQuest: q.isDungeonQuest,
+      isPartyQuest: q.isPartyQuest,
+      isEvent: q.isEvent,
+    }));
+  });
+
   // ── Quests by IDs (batch) ───────────────────────────────────────────────────
 
   fastify.get('/quests/by-ids', async (request) => {

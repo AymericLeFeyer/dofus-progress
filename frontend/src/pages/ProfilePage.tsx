@@ -13,10 +13,12 @@ import {
   ArrowLeftOutlined,
   ThunderboltOutlined,
   SearchOutlined,
+  CompassOutlined,
 } from '@ant-design/icons';
 import { progressService, CharacterProfile } from '../services/progress.service';
 import { dofusdbService, levelRange } from '../services/dofusdb.service';
 import { ClassAvatar } from '../components/character/ClassAvatar';
+import type { Dungeon } from '../types/dofusdb';
 
 const { Title, Text } = Typography;
 
@@ -117,6 +119,7 @@ export function ProfilePage() {
   const [blockedQuests, setBlockedQuests] = useState<QuestStub[]>([]);
   const [startedQuests, setStartedQuests] = useState<QuestStub[]>([]);
   const [catNames, setCatNames] = useState<Record<number, string>>({});
+  const [allDungeons, setAllDungeons] = useState<Dungeon[]>([]);
   const [loading, setLoading] = useState(true);
   const [questsLoading, setQuestsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -128,9 +131,11 @@ export function ProfilePage() {
     Promise.all([
       progressService.getProfile(characterId),
       dofusdbService.getAllQuestCategories(),
+      dofusdbService.getAllDungeons(),
     ])
-      .then(async ([data, cats]) => {
+      .then(async ([data, cats, dungeons]) => {
         setProfile(data);
+        setAllDungeons(dungeons);
         const m: Record<number, string> = {};
         cats.forEach((c) => { m[c.id] = c.name.fr; });
         setCatNames(m);
@@ -175,6 +180,17 @@ export function ProfilePage() {
   const { character } = profile;
   const blockedCols = buildColumns(catNames, blockedQuests);
   const startedCols = buildColumns(catNames, startedQuests);
+
+  const dungeonMap = new Map(allDungeons.map((d) => [d.id, d]));
+  const todoDungeons = (profile.todoDungeonIds ?? []).map((id) => dungeonMap.get(id)).filter(Boolean) as Dungeon[];
+
+  const dungeonColumns: ColumnsType<Dungeon> = [
+    {
+      title: 'Donjon',
+      dataIndex: ['name', 'fr'],
+      sorter: (a, b) => a.name.fr.localeCompare(b.name.fr),
+    },
+  ];
 
   return (
     <div style={{ padding: 24 }}>
@@ -253,7 +269,7 @@ export function ProfilePage() {
           </Col>
         </Row>
 
-        {/* Tabs quêtes bloquées / en cours */}
+        {/* Tabs quêtes + donjons */}
         <Card bodyStyle={{ padding: 0 }}>
           <Tabs
             defaultActiveKey="blocked"
@@ -299,6 +315,27 @@ export function ProfilePage() {
                     size="small"
                     pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `${t} quêtes` }}
                     locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Aucune quête en cours" /> }}
+                    style={{ marginTop: 8 }}
+                  />
+                ),
+              },
+              {
+                key: 'dungeons',
+                label: (
+                  <Space size={6}>
+                    <CompassOutlined style={{ color: '#c0902b' }} />
+                    <span>Donjons à faire</span>
+                    <Tag color="orange" style={{ marginLeft: 0 }}>{todoDungeons.length}</Tag>
+                  </Space>
+                ),
+                children: (
+                  <Table<Dungeon>
+                    dataSource={todoDungeons}
+                    columns={dungeonColumns}
+                    rowKey="id"
+                    size="small"
+                    pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `${t} donjons` }}
+                    locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Aucun donjon à faire" /> }}
                     style={{ marginTop: 8 }}
                   />
                 ),

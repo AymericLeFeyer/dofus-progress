@@ -87,11 +87,53 @@ export const dofusdbService = {
   // ── Dungeons (depuis DofusDB directement) ────────────────────────────────────
 
   async getAllDungeons(): Promise<Dungeon[]> {
-    return cached('dungeons', async () => {
-      const { data } = await dofusdb.get<DofusDBResponse<Dungeon>>('/dungeons', {
-        params: { '$limit': 200 },
+    return cached('dungeons-v3', async () => {
+      const PAGE = 50;
+      const first = await dofusdb.get<DofusDBResponse<Dungeon>>('/dungeons', {
+        params: { '$limit': PAGE, '$skip': 0 },
       });
-      return data.data;
+      const total = first.data.total;
+      const all = [...first.data.data];
+      for (let skip = PAGE; skip < total; skip += PAGE) {
+        const { data } = await dofusdb.get<DofusDBResponse<Dungeon>>('/dungeons', {
+          params: { '$limit': PAGE, '$skip': skip },
+        });
+        all.push(...data.data);
+      }
+      return all;
+    });
+  },
+
+  // ── Quests (toutes, depuis le backend, en cache) ─────────────────────────────
+
+  async getAllQuests(): Promise<Pick<Quest, 'id' | 'name' | 'categoryId' | 'levelMin' | 'levelMax' | 'isDungeonQuest' | 'isPartyQuest' | 'isEvent'>[]> {
+    return cached('all-quests', async () => {
+      const { data } = await api.get('/quests/all');
+      return data;
+    });
+  },
+
+  // ── Achievements (toutes, depuis le backend, en cache) ──────────────────────
+
+  async getAllAchievements(): Promise<Achievement[]> {
+    return cached('all-achievements', async () => {
+      const { data: cats } = await api.get<{ id: number; achievementCount: number }[]>(
+        '/achievements/categories',
+      );
+      const all: Achievement[] = [];
+      for (const cat of cats) {
+        if (!cat.achievementCount) continue;
+        let skip = 0;
+        while (skip < cat.achievementCount) {
+          const { data } = await api.get<DofusDBResponse<Achievement>>('/achievements', {
+            params: { categoryId: cat.id, skip, limit: 50 },
+          });
+          all.push(...data.data);
+          if (data.data.length === 0) break;
+          skip += data.data.length;
+        }
+      }
+      return all;
     });
   },
 

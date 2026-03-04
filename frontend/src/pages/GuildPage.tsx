@@ -1,20 +1,24 @@
 import { useEffect, useState } from 'react';
-import { Card, Button, Typography, Space, Avatar, Tag, Empty, Spin, message, Tooltip, Table, Input, List, theme } from 'antd';
+import { Card, Button, Typography, Space, Avatar, Tag, Empty, Spin, message, Tooltip, Table, Input, List, theme, Tabs } from 'antd';
 import type { ColumnsType, FilterDropdownProps } from 'antd/es/table/interface';
 import {
   TeamOutlined, PlusOutlined, UserAddOutlined, CrownOutlined, BookOutlined,
   StopOutlined, ThunderboltOutlined, MailOutlined, CheckOutlined, CloseOutlined, SearchOutlined,
+  CompassOutlined, TrophyOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useCharacterStore } from '../stores/characterStore';
 import { useGuildStore } from '../stores/guildStore';
 import { GuildFormModal } from '../components/guild/GuildFormModal';
 import { MemberList } from '../components/guild/MemberList';
+import { ClassAvatar } from '../components/character/ClassAvatar';
 import { InviteModal } from '../components/guild/InviteModal';
 import { CreateGuildData } from '../types';
 import { AxiosError } from 'axios';
 import { progressService, GuildMemberProgress } from '../services/progress.service';
 import { dofusdbService, levelRange } from '../services/dofusdb.service';
+import type { Dungeon } from '../types/dofusdb';
+import { ActivityTab } from '../components/guild/ActivityTab';
 
 const { Title, Text } = Typography;
 
@@ -29,10 +33,12 @@ type QuestStub = {
   isEvent: boolean;
 };
 
+type MemberStub = { characterId: string; name: string; class: string };
+
 type TopBlockedQuest = {
   questId: number;
   memberCount: number;
-  memberNames: string[];
+  memberCharacters: MemberStub[];
   quest: QuestStub | null;
 };
 
@@ -54,6 +60,9 @@ export function GuildPage() {
   // Category names map
   const [catNames, setCatNames] = useState<Record<number, string>>({});
 
+  // Dungeons
+  const [dungeonMap, setDungeonMap] = useState<Map<number, Dungeon>>(new Map());
+
   useEffect(() => {
     fetchCharacters();
     fetchInvitations();
@@ -61,6 +70,9 @@ export function GuildPage() {
       const m: Record<number, string> = {};
       cats.forEach((c) => { m[c.id] = c.name.fr; });
       setCatNames(m);
+    }).catch(() => {});
+    dofusdbService.getAllDungeons().then((dungeons) => {
+      setDungeonMap(new Map(dungeons.map((d) => [d.id, d])));
     }).catch(() => {});
   }, [fetchCharacters, fetchInvitations]);
 
@@ -78,19 +90,18 @@ export function GuildPage() {
       setGuildProgress(progressMembers);
 
       // Compute top blocked quests
-      const questCount: Record<number, { count: number; names: string[] }> = {};
+      const questCount: Record<number, { count: number; members: MemberStub[] }> = {};
       progressMembers.forEach((mp) => {
         (mp.blockedQuestIds ?? []).forEach((qid) => {
-          if (!questCount[qid]) questCount[qid] = { count: 0, names: [] };
+          if (!questCount[qid]) questCount[qid] = { count: 0, members: [] };
           questCount[qid].count++;
-          questCount[qid].names.push(mp.name);
+          questCount[qid].members.push({ characterId: mp.characterId, name: mp.name, class: mp.class });
         });
       });
 
       const sorted = Object.entries(questCount)
-        .map(([qid, { count, names }]) => ({ questId: Number(qid), memberCount: count, memberNames: names }))
-        .sort((a, b) => b.memberCount - a.memberCount)
-        .slice(0, 15);
+        .map(([qid, { count, members }]) => ({ questId: Number(qid), memberCount: count, memberCharacters: members }))
+        .sort((a, b) => b.memberCount - a.memberCount);
 
       if (sorted.length > 0) {
         setTopBlockedLoading(true);
@@ -132,6 +143,28 @@ export function GuildPage() {
       .map(([catId, memberSet]) => ({ catId: Number(catId), memberCount: memberSet.size }))
       .sort((a, b) => b.memberCount - a.memberCount)
       .slice(0, 10);
+  })();
+
+  // Donjons en commun : donjons "à faire" par 1+ membres
+  type SharedDungeon = { dungeonId: number; memberCount: number; memberCharacters: MemberStub[]; dungeon: Dungeon | null };
+  const sharedDungeons: SharedDungeon[] = (() => {
+    const counts: Record<number, { count: number; members: MemberStub[] }> = {};
+    guildProgress.forEach((mp) => {
+      (mp.todoDungeonIds ?? []).forEach((did) => {
+        if (!counts[did]) counts[did] = { count: 0, members: [] };
+        counts[did].count++;
+        counts[did].members.push({ characterId: mp.characterId, name: mp.name, class: mp.class });
+      });
+    });
+    return Object.entries(counts)
+      .filter(([, v]) => v.count >= 1)
+      .map(([did, { count, members }]) => ({
+        dungeonId: Number(did),
+        memberCount: count,
+        memberCharacters: members,
+        dungeon: dungeonMap.get(Number(did)) ?? null,
+      }))
+      .sort((a, b) => b.memberCount - a.memberCount);
   })();
 
   const handleCreateGuild = async (data: CreateGuildData) => {
@@ -291,7 +324,7 @@ export function GuildPage() {
   if (!guild) return <div style={{ padding: 24, textAlign: 'center' }}><Spin size="large" /></div>;
 
   return (
-    <div style={{ padding: 24 }}>
+    <div style={{ padding: 24, paddingBottom: 80 }}>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Title level={2} style={{ margin: 0 }}>Guilde</Title>
@@ -344,14 +377,20 @@ export function GuildPage() {
           />
         </Card>
 
-        {/* Top quêtes bloquées */}
-        {(topBlocked.length > 0 || topBlockedLoading) && (() => {
+        {/* Tabs : quêtes bloquées + donjons à faire + nouvelle activité */}
+        {(() => {
+          const allMembersSet = new Map<string, MemberStub>();
+          topBlocked.forEach((r) => r.memberCharacters.forEach((m) => {
+            if (!allMembersSet.has(m.characterId)) allMembersSet.set(m.characterId, m);
+          }));
+          const allMembersInBlocked = [...allMembersSet.values()].sort((a, b) => a.name.localeCompare(b.name));
+
           const catSet = [...new Set(topBlocked.map((r) => r.quest?.categoryId).filter(Boolean) as number[])];
           const catFilters = catSet
             .map((id) => ({ text: catNames[id] ?? `#${id}`, value: id }))
             .sort((a, b) => a.text.localeCompare(b.text));
 
-          const columns: ColumnsType<TopBlockedQuest> = [
+          const questColumns: ColumnsType<TopBlockedQuest> = [
             {
               title: 'Quête',
               key: 'name',
@@ -375,9 +414,7 @@ export function GuildPage() {
               filterIcon: (filtered: boolean) => <SearchOutlined style={{ color: filtered ? '#1677ff' : undefined }} />,
               onFilter: (value, record) =>
                 (record.quest?.name.fr ?? '').toLowerCase().includes((value as string).toLowerCase()),
-              render: (_, r) => (
-                <Text>{r.quest?.name.fr ?? `Quête #${r.questId}`}</Text>
-              ),
+              render: (_, r) => <Text>{r.quest?.name.fr ?? `Quête #${r.questId}`}</Text>,
             },
             {
               title: 'Catégorie',
@@ -427,75 +464,144 @@ export function GuildPage() {
               },
             },
             {
-              title: 'Membres bloqués',
+              title: 'Membres',
               key: 'members',
-              width: 150,
+              width: 160,
               defaultSortOrder: 'descend',
               sorter: (a, b) => a.memberCount - b.memberCount,
+              filters: allMembersInBlocked.map((m) => ({
+                text: (
+                  <Space size={6}>
+                    <ClassAvatar className={m.class} size={18} />
+                    <span>{m.name}</span>
+                  </Space>
+                ),
+                value: m.characterId,
+              })),
+              onFilter: (value, record) =>
+                record.memberCharacters.some((m) => m.characterId === value),
               render: (_, r) => (
-                <Tooltip title={r.memberNames.join(', ')}>
-                  <Tag color="red">{r.memberCount} bloqué{r.memberCount > 1 ? 's' : ''}</Tag>
-                </Tooltip>
+                <Space size={4}>
+                  {r.memberCharacters.map((m) => (
+                    <Tooltip key={m.characterId} title={m.name}>
+                      <span><ClassAvatar className={m.class} size={22} /></span>
+                    </Tooltip>
+                  ))}
+                </Space>
+              ),
+            },
+          ];
+
+          const allDungeonMembersSet = new Map<string, MemberStub>();
+          sharedDungeons.forEach((r) => r.memberCharacters.forEach((m) => {
+            if (!allDungeonMembersSet.has(m.characterId)) allDungeonMembersSet.set(m.characterId, m);
+          }));
+          const allDungeonMembers = [...allDungeonMembersSet.values()].sort((a, b) => a.name.localeCompare(b.name));
+
+          const dungeonColumns: ColumnsType<typeof sharedDungeons[0]> = [
+            {
+              title: 'Donjon',
+              key: 'name',
+              sorter: (a, b) => (a.dungeon?.name.fr ?? '').localeCompare(b.dungeon?.name.fr ?? ''),
+              render: (_, r) => <Text>{r.dungeon?.name.fr ?? `Donjon #${r.dungeonId}`}</Text>,
+            },
+            {
+              title: 'Membres',
+              key: 'members',
+              width: 160,
+              defaultSortOrder: 'descend',
+              sorter: (a, b) => a.memberCount - b.memberCount,
+              filters: allDungeonMembers.map((m) => ({
+                text: (
+                  <Space size={6}>
+                    <ClassAvatar className={m.class} size={18} />
+                    <span>{m.name}</span>
+                  </Space>
+                ),
+                value: m.characterId,
+              })),
+              onFilter: (value, record) =>
+                record.memberCharacters.some((m) => m.characterId === value),
+              render: (_, r) => (
+                <Space size={4}>
+                  {r.memberCharacters.map((m) => (
+                    <Tooltip key={m.characterId} title={m.name}>
+                      <span><ClassAvatar className={m.class} size={22} /></span>
+                    </Tooltip>
+                  ))}
+                </Space>
               ),
             },
           ];
 
           return (
-            <Card
-              title={
-                <Space>
-                  <StopOutlined style={{ color: '#ff4d4f' }} />
-                  <span>Top quêtes bloquées</span>
-                </Space>
-              }
-              loading={topBlockedLoading}
-            >
-              <Table<TopBlockedQuest>
-                dataSource={topBlocked}
-                columns={columns}
-                rowKey="questId"
-                size="small"
-                pagination={false}
-                locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Aucune quête bloquée" /> }}
+            <Card bodyStyle={{ padding: 0 }} loading={topBlockedLoading}>
+              <Tabs
+                style={{ padding: '0 16px' }}
+                items={[
+                  {
+                    key: 'blocked',
+                    label: (
+                      <Space size={6}>
+                        <StopOutlined style={{ color: '#ff4d4f' }} />
+                        <span>Quêtes bloquées</span>
+                        <Tag color="red" style={{ marginLeft: 0 }}>{topBlocked.length}</Tag>
+                      </Space>
+                    ),
+                    children: (
+                      <Table<TopBlockedQuest>
+                        dataSource={topBlocked}
+                        columns={questColumns}
+                        rowKey="questId"
+                        size="small"
+                        pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `${t} quêtes` }}
+                        locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Aucune quête bloquée" /> }}
+                        style={{ marginTop: 4 }}
+                      />
+                    ),
+                  },
+                  {
+                    key: 'dungeons',
+                    label: (
+                      <Space size={6}>
+                        <CompassOutlined style={{ color: '#c0902b' }} />
+                        <span>Donjons à faire</span>
+                        <Tag color="gold" style={{ marginLeft: 0 }}>{sharedDungeons.length}</Tag>
+                      </Space>
+                    ),
+                    children: (
+                      <Table<typeof sharedDungeons[0]>
+                        dataSource={sharedDungeons}
+                        columns={dungeonColumns}
+                        rowKey="dungeonId"
+                        size="small"
+                        pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `${t} donjons` }}
+                        locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Aucun donjon à faire dans la guilde" /> }}
+                        style={{ marginTop: 4 }}
+                      />
+                    ),
+                  },
+                  {
+                    key: 'activity',
+                    label: (
+                      <Space size={6}>
+                        <TrophyOutlined style={{ color: '#c0902b' }} />
+                        <span>Nouvelle activité</span>
+                      </Space>
+                    ),
+                    children: (
+                      <ActivityTab
+                        guildProgress={guildProgress}
+                        dungeonMap={dungeonMap}
+                        catNames={catNames}
+                      />
+                    ),
+                  },
+                ]}
               />
             </Card>
           );
         })()}
-
-        {/* Activité commune par catégorie */}
-        {sharedActivity.length > 0 && (
-          <Card
-            title={
-              <Space>
-                <BookOutlined style={{ color: '#c0902b' }} />
-                <span>Activité commune par catégorie</span>
-              </Space>
-            }
-          >
-            <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-              Catégories où 2 membres ou plus ont des quêtes en cours ou bloquées
-            </Text>
-            <Space direction="vertical" style={{ width: '100%' }} size={8}>
-              {sharedActivity.map(({ catId, memberCount }) => (
-                <div
-                  key={catId}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '8px 12px',
-                    background: token.colorFillAlter,
-                    borderRadius: 6,
-                    border: `1px solid ${token.colorBorderSecondary}`,
-                  }}
-                >
-                  <Text style={{ fontSize: 13 }}>{catNames[catId] ?? `Catégorie #${catId}`}</Text>
-                  <Tag color="orange">{memberCount} membre{memberCount > 1 ? 's' : ''}</Tag>
-                </div>
-              ))}
-            </Space>
-          </Card>
-        )}
       </Space>
 
       <InviteModal

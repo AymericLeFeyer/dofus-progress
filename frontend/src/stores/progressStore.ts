@@ -6,6 +6,8 @@ interface ProgressStore {
   startedQuestIds: Set<number>;
   blockedQuestIds: Set<number>;
   completedAchievementIds: Set<number>;
+  todoDungeonIds: Set<number>;
+  doneDungeonIds: Set<number>;
   totalPoints: number;
   achievementCategoryProgress: Record<number, number>;
   completedQuestCategoryProgress: Record<number, number>;
@@ -23,6 +25,7 @@ interface ProgressStore {
   toggleAchievement: (characterId: string, achievementId: number) => Promise<void>;
   completeAllAchievements: (characterId: string, categoryId: number) => Promise<void>;
   completeAllQuests: (characterId: string, categoryId: number) => Promise<void>;
+  setDungeonStatus: (characterId: string, dungeonId: number, flags: { isTodo?: boolean; isDone?: boolean }) => Promise<void>;
   reset: () => void;
 }
 
@@ -31,6 +34,8 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
   startedQuestIds: new Set(),
   blockedQuestIds: new Set(),
   completedAchievementIds: new Set(),
+  todoDungeonIds: new Set(),
+  doneDungeonIds: new Set(),
   totalPoints: 0,
   achievementCategoryProgress: {},
   completedQuestCategoryProgress: {},
@@ -49,6 +54,8 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
         startedQuestIds: new Set(data.startedQuestIds),
         blockedQuestIds: new Set(data.blockedQuestIds ?? []),
         completedAchievementIds: new Set(data.completedAchievementIds),
+        todoDungeonIds: new Set(data.todoDungeonIds ?? []),
+        doneDungeonIds: new Set(data.doneDungeonIds ?? []),
         totalPoints: data.totalPoints,
         achievementCategoryProgress: data.achievementCategoryProgress,
         completedQuestCategoryProgress: data.completedQuestCategoryProgress,
@@ -127,12 +134,27 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
     await get().fetchProgress(characterId);
   },
 
+  setDungeonStatus: async (characterId, dungeonId, flags) => {
+    const result = await progressService.setDungeonStatus(characterId, dungeonId, flags);
+    set((state) => {
+      const nextTodo = new Set(state.todoDungeonIds);
+      const nextDone = new Set(state.doneDungeonIds);
+      if (result.isTodo) nextTodo.add(dungeonId);
+      else nextTodo.delete(dungeonId);
+      if (result.isDone) nextDone.add(dungeonId);
+      else nextDone.delete(dungeonId);
+      return { todoDungeonIds: nextTodo, doneDungeonIds: nextDone };
+    });
+  },
+
   reset: () => {
     set({
       completedQuestIds: new Set(),
       startedQuestIds: new Set(),
       blockedQuestIds: new Set(),
       completedAchievementIds: new Set(),
+      todoDungeonIds: new Set(),
+      doneDungeonIds: new Set(),
       totalPoints: 0,
       achievementCategoryProgress: {},
       completedQuestCategoryProgress: {},

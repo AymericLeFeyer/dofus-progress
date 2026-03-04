@@ -155,3 +155,14 @@ model CharacterAchievementProgress {
   @@id([characterId, achievementId])
   @@map("character_achievement_progress")
 }
+
+model CharacterDungeonProgress {
+  characterId String   @map("character_id")
+  dungeonId   Int      @map("dungeon_id")
+  isTodo      Boolean  @default(false) @map("is_todo")
+  isDone      Boolean  @default(false) @map("is_done")
+  updatedAt   DateTime @default(now()) @map("updated_at")
+
+  @@id([characterId, dungeonId])
+  @@map("character_dungeon_progress")
+}

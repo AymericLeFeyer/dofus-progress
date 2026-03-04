@@ -13,6 +13,8 @@ export interface CharacterProgress {
   completedQuestCategoryProgress: Record<number, number>;
   startedQuestCategoryProgress: Record<number, number>;
   blockedQuestCategoryProgress: Record<number, number>;
+  todoDungeonIds: number[];
+  doneDungeonIds: number[];
 }
 
 export interface GuildMemberProgress {
@@ -30,6 +32,8 @@ export interface GuildMemberProgress {
   completedQuestCategoryProgress: Record<number, number>;
   startedQuestCategoryProgress: Record<number, number>;
   blockedQuestCategoryProgress: Record<number, number>;
+  todoDungeonIds: number[];
+  doneDungeonIds: number[];
 }
 
 export const progressService = {
@@ -80,6 +84,18 @@ export const progressService = {
   async completeAllQuests(characterId: string, categoryId: number): Promise<{ count: number }> {
     const { data } = await api.post<{ count: number }>(
       `/progress/${characterId}/quest/category/${categoryId}/all`,
+    );
+    return data;
+  },
+
+  async setDungeonStatus(
+    characterId: string,
+    dungeonId: number,
+    flags: { isTodo?: boolean; isDone?: boolean },
+  ): Promise<{ isTodo: boolean; isDone: boolean }> {
+    const { data } = await api.put<{ isTodo: boolean; isDone: boolean }>(
+      `/progress/${characterId}/dungeon/${dungeonId}`,
+      flags,
     );
     return data;
   },

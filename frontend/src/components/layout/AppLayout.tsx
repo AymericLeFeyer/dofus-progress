@@ -12,6 +12,7 @@ import {
   CaretDownOutlined,
   MoonOutlined,
   SunOutlined,
+  CompassOutlined,
 } from '@ant-design/icons';
 import { InvitationsFloat } from '../guild/InvitationsFloat';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
@@ -92,6 +93,7 @@ export function AppLayout() {
       children: [
         { key: '/achievements', icon: <StarOutlined />, label: 'Succès' },
         { key: '/quests', icon: <BookOutlined />, label: 'Quêtes' },
+        { key: '/dungeons', icon: <CompassOutlined />, label: 'Donjons' },
       ],
     },
   ];
@@ -108,9 +110,18 @@ export function AppLayout() {
     },
   ];
 
+  const siderWidth = collapsed ? 80 : 220;
+
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} theme="dark" width={220}>
+      <Sider
+        collapsible
+        collapsed={collapsed}
+        onCollapse={setCollapsed}
+        theme="dark"
+        width={220}
+        style={{ position: 'fixed', height: '100vh', left: 0, top: 0, bottom: 0, zIndex: 100, overflow: 'auto' }}
+      >
         <div style={{ padding: '16px', textAlign: 'center', color: '#c0902b' }}>
           <TrophyOutlined style={{ fontSize: 24 }} />
           {!collapsed && (
@@ -131,9 +142,15 @@ export function AppLayout() {
         />
       </Sider>
 
-      <Layout>
+      <Layout style={{ marginLeft: siderWidth, transition: 'margin-left 0.2s' }}>
         <Header
           style={{
+            position: 'fixed',
+            top: 0,
+            right: 0,
+            left: siderWidth,
+            transition: 'left 0.2s',
+            zIndex: 99,
             background: token.colorBgContainer,
             padding: '0 24px',
             display: 'flex',
@@ -199,7 +216,7 @@ export function AppLayout() {
           </Space>
         </Header>
 
-        <Content style={{ margin: '16px', background: token.colorBgLayout, minHeight: 'calc(100vh - 112px)' }}>
+        <Content style={{ margin: '16px', marginTop: 80, background: token.colorBgLayout, minHeight: 'calc(100vh - 96px)' }}>
           <Outlet />
         </Content>
       </Layout>
