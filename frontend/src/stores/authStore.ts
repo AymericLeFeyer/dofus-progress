@@ -13,7 +13,7 @@ interface AuthStore {
   initialize: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthStore>((set, get) => ({
+export const useAuthStore = create<AuthStore>((set) => ({
   user: null,
   token: localStorage.getItem('token'),
   isLoading: false,

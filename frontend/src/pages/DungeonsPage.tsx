@@ -11,7 +11,6 @@ import {
   Empty,
   Space,
   Statistic,
-  Badge,
   Tooltip,
   Divider,
 } from 'antd';
@@ -25,7 +24,7 @@ import {
 import type { Dungeon } from '../types/dofusdb';
 import { dofusdbService } from '../services/dofusdb.service';
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 const { Search } = Input;
 
 function levelTagColor(level: number): string {

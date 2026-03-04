@@ -12,6 +12,7 @@ import type {
   QuestCategory,
   Quest,
   QuestStep,
+  Dungeon,
 } from '../types/dofusdb';
 
 // Client direct DofusDB (uniquement pour les étapes de quêtes, chargées à la demande)
@@ -81,6 +82,17 @@ export const dofusdbService = {
     if (!ids.length) return [];
     const { data } = await api.get('/quests/by-ids', { params: { ids: ids.join(',') } });
     return data;
+  },
+
+  // ── Dungeons (depuis DofusDB directement) ────────────────────────────────────
+
+  async getAllDungeons(): Promise<Dungeon[]> {
+    return cached('dungeons', async () => {
+      const { data } = await dofusdb.get<DofusDBResponse<Dungeon>>('/dungeons', {
+        params: { '$limit': 200 },
+      });
+      return data.data;
+    });
   },
 
   // ── Quest steps (depuis DofusDB directement, à la demande) ──────────────────
