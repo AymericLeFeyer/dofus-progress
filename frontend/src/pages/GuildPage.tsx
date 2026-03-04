@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Card, Button, Typography, Space, Avatar, Tag, Empty, Spin, message, Tooltip, Table, Input, List, theme, Tabs } from 'antd';
+import { Card, Button, Typography, Space, Avatar, Tag, Empty, Spin, message, Tooltip, Table, Input, List, Tabs } from 'antd';
 import type { ColumnsType, FilterDropdownProps } from 'antd/es/table/interface';
 import {
-  TeamOutlined, PlusOutlined, UserAddOutlined, CrownOutlined, BookOutlined,
+  TeamOutlined, PlusOutlined, UserAddOutlined, CrownOutlined,
   StopOutlined, ThunderboltOutlined, MailOutlined, CheckOutlined, CloseOutlined, SearchOutlined,
   CompassOutlined, TrophyOutlined,
 } from '@ant-design/icons';
@@ -43,7 +43,6 @@ type TopBlockedQuest = {
 };
 
 export function GuildPage() {
-  const { token } = theme.useToken();
   const navigate = useNavigate();
   const { characters, fetchCharacters } = useCharacterStore();
   const { guild, members, fetchGuild, createGuild, inviteCharacter, removeMember, invitations, fetchInvitations, acceptInvitation, declineInvitation } = useGuildStore();
@@ -123,27 +122,6 @@ export function GuildPage() {
     characters.some((c) => c.id === m.characterId),
   );
   const canManage = myMember?.role === 'leader' || myMember?.role === 'officer';
-
-  // Activité commune : catégories où 2+ membres ont des quêtes EN COURS ou BLOQUÉES
-  const sharedActivity = (() => {
-    const catMemberCount: Record<number, Set<string>> = {};
-    guildProgress.forEach((mp) => {
-      const cats = new Set([
-        ...Object.keys(mp.startedQuestCategoryProgress ?? {}),
-        ...Object.keys(mp.blockedQuestCategoryProgress ?? {}),
-      ]);
-      cats.forEach((catId) => {
-        const id = Number(catId);
-        if (!catMemberCount[id]) catMemberCount[id] = new Set();
-        catMemberCount[id].add(mp.characterId);
-      });
-    });
-    return Object.entries(catMemberCount)
-      .filter(([, m]) => m.size >= 2)
-      .map(([catId, memberSet]) => ({ catId: Number(catId), memberCount: memberSet.size }))
-      .sort((a, b) => b.memberCount - a.memberCount)
-      .slice(0, 10);
-  })();
 
   // Donjons en commun : donjons "à faire" par 1+ membres
   type SharedDungeon = { dungeonId: number; memberCount: number; memberCharacters: MemberStub[]; dungeon: Dungeon | null };
