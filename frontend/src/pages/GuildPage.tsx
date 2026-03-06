@@ -88,42 +88,44 @@ export function GuildPage() {
     if (guildId) fetchGuild(guildId);
   }, [guildId, fetchGuild]);
 
-  const loadGuildProgress = useCallback(async (): Promise<GuildMemberProgress[]> => {
+  const refreshMemberProgress = useCallback(async (): Promise<GuildMemberProgress[]> => {
     if (!guildId) return [];
     const { members: progressMembers } = await progressService.getGuildProgress(guildId);
     setGuildProgress(progressMembers);
-
-    // Compute top blocked quests
-    const questCount: Record<number, { count: number; members: MemberStub[] }> = {};
-    progressMembers.forEach((mp) => {
-      (mp.blockedQuestIds ?? []).forEach((qid) => {
-        if (!questCount[qid]) questCount[qid] = { count: 0, members: [] };
-        questCount[qid].count++;
-        questCount[qid].members.push({ characterId: mp.characterId, name: mp.name, class: mp.class });
-      });
-    });
-
-    const sorted = Object.entries(questCount)
-      .map(([qid, { count, members }]) => ({ questId: Number(qid), memberCount: count, memberCharacters: members }))
-      .sort((a, b) => b.memberCount - a.memberCount);
-
-    if (sorted.length > 0) {
-      setTopBlockedLoading(true);
-      const questData = await dofusdbService.getQuestsByIds(sorted.map((s) => s.questId));
-      const questMap: Record<number, QuestStub> = {};
-      questData.forEach((q) => { questMap[q.id] = q; });
-      setTopBlocked(sorted.map((s) => ({ ...s, quest: questMap[s.questId] ?? null })));
-      setTopBlockedLoading(false);
-    } else {
-      setTopBlocked([]);
-    }
-
     return progressMembers;
   }, [guildId]);
 
   useEffect(() => {
-    loadGuildProgress().catch(() => {});
-  }, [loadGuildProgress]);
+    if (!guildId) return;
+    progressService.getGuildProgress(guildId).then(async ({ members: progressMembers }) => {
+      setGuildProgress(progressMembers);
+
+      // Compute top blocked quests (only on initial load)
+      const questCount: Record<number, { count: number; members: MemberStub[] }> = {};
+      progressMembers.forEach((mp) => {
+        (mp.blockedQuestIds ?? []).forEach((qid) => {
+          if (!questCount[qid]) questCount[qid] = { count: 0, members: [] };
+          questCount[qid].count++;
+          questCount[qid].members.push({ characterId: mp.characterId, name: mp.name, class: mp.class });
+        });
+      });
+
+      const sorted = Object.entries(questCount)
+        .map(([qid, { count, members }]) => ({ questId: Number(qid), memberCount: count, memberCharacters: members }))
+        .sort((a, b) => b.memberCount - a.memberCount);
+
+      if (sorted.length > 0) {
+        setTopBlockedLoading(true);
+        const questData = await dofusdbService.getQuestsByIds(sorted.map((s) => s.questId));
+        const questMap: Record<number, QuestStub> = {};
+        questData.forEach((q) => { questMap[q.id] = q; });
+        setTopBlocked(sorted.map((s) => ({ ...s, quest: questMap[s.questId] ?? null })));
+        setTopBlockedLoading(false);
+      } else {
+        setTopBlocked([]);
+      }
+    }).catch(() => {});
+  }, [guildId]);
 
   const eligibleCharacters = characters.filter((c) => !c.guildMember);
 
@@ -602,7 +604,7 @@ export function GuildPage() {
                         guildProgress={guildProgress}
                         dungeonMap={dungeonMap}
                         catNames={catNames}
-                        onRefreshProgress={loadGuildProgress}
+                        onRefreshProgress={refreshMemberProgress}
                       />
                     ),
                   },
