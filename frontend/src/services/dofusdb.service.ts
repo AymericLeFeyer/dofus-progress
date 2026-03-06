@@ -158,23 +158,8 @@ export const dofusdbService = {
 
   async getAllAchievements(): Promise<Achievement[]> {
     return cached('all-achievements', async () => {
-      const { data: cats } = await api.get<{ id: number; achievementCount: number }[]>(
-        '/achievements/categories',
-      );
-      const all: Achievement[] = [];
-      for (const cat of cats) {
-        if (!cat.achievementCount) continue;
-        let skip = 0;
-        while (skip < cat.achievementCount) {
-          const { data } = await api.get<DofusDBResponse<Achievement>>('/achievements', {
-            params: { categoryId: cat.id, skip, limit: 50 },
-          });
-          all.push(...data.data);
-          if (data.data.length === 0) break;
-          skip += data.data.length;
-        }
-      }
-      return all;
+      const { data } = await api.get<Achievement[]>('/achievements/all');
+      return data;
     });
   },
 

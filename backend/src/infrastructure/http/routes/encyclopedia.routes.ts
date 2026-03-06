@@ -84,6 +84,24 @@ export async function encyclopediaRoutes(fastify: FastifyInstance) {
     }));
   });
 
+  // ── Achievements all (lightweight, for activity picker) ─────────────────────
+
+  fastify.get('/achievements/all', async () => {
+    const data = await prisma.achievement.findMany({
+      select: { id: true, nameFr: true, categoryId: true, points: true, level: true, order: true, img: true },
+      orderBy: { id: 'asc' },
+    });
+    return data.map((a) => ({
+      id: a.id,
+      categoryId: a.categoryId,
+      points: a.points,
+      level: a.level,
+      order: a.order,
+      name: { fr: a.nameFr },
+      img: a.img,
+    }));
+  });
+
   // ── Quests all (lightweight, for activity picker) ───────────────────────────
 
   fastify.get('/quests/all', async () => {
