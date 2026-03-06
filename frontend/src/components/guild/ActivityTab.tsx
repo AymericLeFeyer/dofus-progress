@@ -129,13 +129,15 @@ interface Props {
   guildProgress: GuildMemberProgress[];
   dungeonMap: Map<number, Dungeon>;
   catNames: Record<number, string>;
+  onRefreshProgress: () => Promise<GuildMemberProgress[]>;
 }
 
-export function ActivityTab({ guildProgress, dungeonMap, catNames }: Props) {
+export function ActivityTab({ guildProgress, dungeonMap, catNames, onRefreshProgress }: Props) {
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [selectedTypes, setSelectedTypes] = useState<ActivityType[]>([]);
   const [beneficialToAll, setBeneficialToAll] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestions | null>(null);
+  const [lastProgress, setLastProgress] = useState<GuildMemberProgress[]>(guildProgress);
   const [loading, setLoading] = useState(false);
   const [count, setCount] = useState(3);
   const [achCatNames, setAchCatNames] = useState<Record<number, string>>({});
@@ -159,9 +161,7 @@ export function ActivityTab({ guildProgress, dungeonMap, catNames }: Props) {
     dofusdbService.getAllAchievements().then(setAllAchievements).catch(() => {});
   }, []);
 
-  const selectedMembers = guildProgress.filter((mp) => selectedMemberIds.includes(mp.characterId));
-
-  // Use Sets for O(1) lookup on completed arrays
+  // Use Sets for O(1) lookup on completed arrays (used by getMembersForItem for display)
   const completedQuestSets = useMemo(() =>
     new Map(guildProgress.map((mp) => [mp.characterId, new Set(mp.completedQuestIds)])),
     [guildProgress],
@@ -188,43 +188,48 @@ export function ActivityTab({ guildProgress, dungeonMap, catNames }: Props) {
   const memberNeedsAchievement = (mp: GuildMemberProgress, id: number) =>
     !completedAchSets.get(mp.characterId)?.has(id);
 
-  function applyFilter<T>(
-    items: T[],
-    getId: (item: T) => number,
-    needs: (mp: GuildMemberProgress, id: number) => boolean,
-  ): T[] {
-    if (!selectedMembers.length) return [];
-    return items.filter((item) => {
-      const id = getId(item);
-      return beneficialToAll
-        ? selectedMembers.every((mp) => needs(mp, id))
-        : selectedMembers.some((mp) => needs(mp, id));
-    });
-  }
-
   function getMembersForItem(id: number, needs: (mp: GuildMemberProgress, id: number) => boolean) {
-    return selectedMembers.filter((mp) => needs(mp, id));
+    return lastProgress.filter((mp) => selectedMemberIds.includes(mp.characterId) && needs(mp, id));
   }
 
   async function generate() {
     if (!selectedMemberIds.length || !selectedTypes.length) return;
     setLoading(true);
     try {
+      const freshProgress = await onRefreshProgress();
+      setLastProgress(freshProgress);
+      const freshMembers = freshProgress.filter((mp) => selectedMemberIds.includes(mp.characterId));
+
+      const freshCompletedQuestSets = new Map(freshProgress.map((mp) => [mp.characterId, new Set(mp.completedQuestIds)]));
+      const freshCompletedAchSets = new Map(freshProgress.map((mp) => [mp.characterId, new Set(mp.completedAchievementIds)]));
+      const freshDoneDungeonSets = new Map(freshProgress.map((mp) => [mp.characterId, new Set(mp.doneDungeonIds ?? [])]));
+      const freshTodoDungeonSets = new Map(freshProgress.map((mp) => [mp.characterId, new Set(mp.todoDungeonIds ?? [])]));
+
+      const freshNeedsQuest = (mp: GuildMemberProgress, id: number) => !freshCompletedQuestSets.get(mp.characterId)?.has(id);
+      const freshNeedsDungeon = (mp: GuildMemberProgress, id: number) =>
+        freshTodoDungeonSets.get(mp.characterId)?.has(id) || !freshDoneDungeonSets.get(mp.characterId)?.has(id);
+      const freshNeedsAchievement = (mp: GuildMemberProgress, id: number) => !freshCompletedAchSets.get(mp.characterId)?.has(id);
+
+      function filterFresh<T>(items: T[], getId: (item: T) => number, needs: (mp: GuildMemberProgress, id: number) => boolean): T[] {
+        if (!freshMembers.length) return [];
+        return items.filter((item) => {
+          const id = getId(item);
+          return beneficialToAll
+            ? freshMembers.every((mp) => needs(mp, id))
+            : freshMembers.some((mp) => needs(mp, id));
+        });
+      }
+
       const result: Suggestions = {};
 
       if (selectedTypes.includes('quests')) {
-        const pool = applyFilter(allQuests, (q) => q.id, memberNeedsQuest);
-        result.quests = shuffle(pool).slice(0, count);
+        result.quests = shuffle(filterFresh(allQuests, (q) => q.id, freshNeedsQuest)).slice(0, count);
       }
-
       if (selectedTypes.includes('dungeons')) {
-        const pool = applyFilter([...dungeonMap.values()], (d) => d.id, memberNeedsDungeon);
-        result.dungeons = shuffle(pool).slice(0, count);
+        result.dungeons = shuffle(filterFresh([...dungeonMap.values()], (d) => d.id, freshNeedsDungeon)).slice(0, count);
       }
-
       if (selectedTypes.includes('achievements')) {
-        const pool = applyFilter(allAchievements, (a) => a.id, memberNeedsAchievement);
-        result.achievements = shuffle(pool).slice(0, count);
+        result.achievements = shuffle(filterFresh(allAchievements, (a) => a.id, freshNeedsAchievement)).slice(0, count);
       }
 
       setSuggestions(result);
