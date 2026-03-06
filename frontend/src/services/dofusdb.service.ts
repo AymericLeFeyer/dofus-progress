@@ -145,6 +145,15 @@ export const dofusdbService = {
     });
   },
 
+  async getQuestById(id: number): Promise<Quest | null> {
+    try {
+      const { data } = await api.get<Quest>(`/quests/${id}`);
+      return data;
+    } catch {
+      return null;
+    }
+  },
+
   // ── Achievements (toutes, depuis le backend, en cache) ──────────────────────
 
   async getAllAchievements(): Promise<Achievement[]> {

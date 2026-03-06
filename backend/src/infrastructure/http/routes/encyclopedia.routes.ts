@@ -128,6 +128,26 @@ export async function encyclopediaRoutes(fastify: FastifyInstance) {
 
   // ── Quests ──────────────────────────────────────────────────────────────────
 
+  fastify.get<{ Params: { id: string } }>('/quests/:id', async (request, reply) => {
+    const id = Number(request.params.id);
+    if (isNaN(id)) return reply.status(400).send({ error: 'Invalid id' });
+    const q = await prisma.quest.findUnique({ where: { id } });
+    if (!q) return reply.status(404).send({ error: 'Quest not found' });
+    return {
+      id: q.id,
+      categoryId: q.categoryId,
+      name: { fr: q.nameFr },
+      levelMin: q.levelMin,
+      levelMax: q.levelMax,
+      isDungeonQuest: q.isDungeonQuest,
+      isPartyQuest: q.isPartyQuest,
+      repeatType: q.repeatType,
+      stepIds: q.stepIds,
+      followable: q.followable,
+      isEvent: q.isEvent,
+    };
+  });
+
   fastify.get('/quests', async (request) => {
     const { categoryId, skip = '0', limit = '50', search } = request.query as {
       categoryId?: string;

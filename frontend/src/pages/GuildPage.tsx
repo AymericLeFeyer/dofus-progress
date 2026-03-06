@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Card, Button, Typography, Space, Avatar, Tag, Empty, Spin, message, Tooltip, Table, Input, List, Tabs } from 'antd';
+import { Card, Button, Typography, Space, Avatar, Tag, Empty, Spin, message, Tooltip, Table, Input, List, Tabs, Drawer, Divider, Skeleton, Steps } from 'antd';
 import type { ColumnsType, FilterDropdownProps } from 'antd/es/table/interface';
 import {
   TeamOutlined, PlusOutlined, UserAddOutlined, CrownOutlined,
   StopOutlined, ThunderboltOutlined, MailOutlined, CheckOutlined, CloseOutlined, SearchOutlined,
-  CompassOutlined, TrophyOutlined,
+  CompassOutlined, TrophyOutlined, ReloadOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useCharacterStore } from '../stores/characterStore';
@@ -17,10 +17,10 @@ import { CreateGuildData } from '../types';
 import { AxiosError } from 'axios';
 import { progressService, GuildMemberProgress } from '../services/progress.service';
 import { dofusdbService, levelRange } from '../services/dofusdb.service';
-import type { Dungeon } from '../types/dofusdb';
+import type { Dungeon, Quest, QuestStep } from '../types/dofusdb';
 import { ActivityTab } from '../components/guild/ActivityTab';
 
-const { Title, Text } = Typography;
+const { Title, Text, Paragraph } = Typography;
 
 type QuestStub = {
   id: number;
@@ -51,6 +51,11 @@ export function GuildPage() {
 
   // Guild progress
   const [guildProgress, setGuildProgress] = useState<GuildMemberProgress[]>([]);
+
+  // Quest detail drawer
+  const [drawerQuest, setDrawerQuest] = useState<Quest | null>(null);
+  const [drawerSteps, setDrawerSteps] = useState<QuestStep[]>([]);
+  const [drawerStepsLoading, setDrawerStepsLoading] = useState(false);
 
   // Top blocked quests (fetched)
   const [topBlocked, setTopBlocked] = useState<TopBlockedQuest[]>([]);
@@ -202,6 +207,19 @@ export function GuildPage() {
     } catch (err) {
       const msg = err instanceof AxiosError ? err.response?.data?.error : 'Erreur';
       message.error(msg);
+    }
+  };
+
+  const openQuestDetail = async (questId: number) => {
+    const quest = await dofusdbService.getQuestById(questId);
+    if (!quest) return;
+    setDrawerQuest(quest);
+    setDrawerSteps([]);
+    if (quest.stepIds.length > 0) {
+      setDrawerStepsLoading(true);
+      const steps = await dofusdbService.getQuestSteps(quest.stepIds);
+      setDrawerSteps(steps);
+      setDrawerStepsLoading(false);
     }
   };
 
@@ -392,7 +410,14 @@ export function GuildPage() {
               filterIcon: (filtered: boolean) => <SearchOutlined style={{ color: filtered ? '#1677ff' : undefined }} />,
               onFilter: (value, record) =>
                 (record.quest?.name.fr ?? '').toLowerCase().includes((value as string).toLowerCase()),
-              render: (_, r) => <Text>{r.quest?.name.fr ?? `Quête #${r.questId}`}</Text>,
+              render: (_, r) => (
+                <Text
+                  style={{ cursor: 'pointer', color: '#1677ff' }}
+                  onClick={() => openQuestDetail(r.questId)}
+                >
+                  {r.quest?.name.fr ?? `Quête #${r.questId}`}
+                </Text>
+              ),
             },
             {
               title: 'Catégorie',
@@ -587,6 +612,76 @@ export function GuildPage() {
         onSubmit={handleInvite}
         onCancel={() => setInviteModalOpen(false)}
       />
+
+      <Drawer
+        title={drawerQuest?.name.fr ?? 'Détail quête'}
+        open={!!drawerQuest}
+        onClose={() => { setDrawerQuest(null); setDrawerSteps([]); }}
+        width={480}
+        extra={
+          <Space>
+            {drawerQuest?.isDungeonQuest && (
+              <Tag color="volcano" icon={<ThunderboltOutlined />}>Donjon</Tag>
+            )}
+            {drawerQuest?.isPartyQuest && (
+              <Tag color="blue" icon={<TeamOutlined />}>Groupe</Tag>
+            )}
+            {drawerQuest?.repeatType !== undefined && drawerQuest.repeatType !== 0 && (
+              <Tag color="green" icon={<ReloadOutlined />}>Répétable</Tag>
+            )}
+          </Space>
+        }
+      >
+        {drawerQuest && (
+          <Space direction="vertical" style={{ width: '100%' }} size="middle">
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {(drawerQuest.levelMin > 0 || drawerQuest.levelMax > 0) && (
+                <Tag color="orange" style={{ fontSize: 14, padding: '2px 10px' }}>
+                  {levelRange(drawerQuest.levelMin, drawerQuest.levelMax)}
+                </Tag>
+              )}
+              <Tag>{drawerQuest.stepIds.length} étape{drawerQuest.stepIds.length > 1 ? 's' : ''}</Tag>
+              {drawerQuest.followable && <Tag color="cyan">Suivable</Tag>}
+            </div>
+            <Divider style={{ margin: '4px 0' }} />
+            <div>
+              <Text strong>Étapes</Text>
+              {drawerStepsLoading ? (
+                <Skeleton active paragraph={{ rows: 4 }} style={{ marginTop: 12 }} />
+              ) : drawerSteps.length > 0 ? (
+                <Steps
+                  direction="vertical"
+                  size="small"
+                  style={{ marginTop: 12 }}
+                  items={drawerSteps.map((step) => ({
+                    title: <Text strong>{step.name.fr}</Text>,
+                    description: (
+                      <Space direction="vertical" size={2} style={{ paddingBottom: 8 }}>
+                        {step.description?.fr && (
+                          <Paragraph type="secondary" style={{ margin: 0, fontSize: 12 }}>
+                            {step.description.fr}
+                          </Paragraph>
+                        )}
+                        {step.optimalLevel > 0 && (
+                          <Tag style={{ fontSize: 11 }}>Niv. optimal : {step.optimalLevel}</Tag>
+                        )}
+                        <Text type="secondary" style={{ fontSize: 11 }}>
+                          {step.objectiveIds.length} objectif{step.objectiveIds.length > 1 ? 's' : ''}
+                        </Text>
+                      </Space>
+                    ),
+                    status: 'wait' as const,
+                  }))}
+                />
+              ) : (
+                <Paragraph type="secondary" style={{ marginTop: 8 }}>
+                  Aucune information sur les étapes disponible.
+                </Paragraph>
+              )}
+            </div>
+          </Space>
+        )}
+      </Drawer>
 
     </div>
   );

@@ -13,12 +13,15 @@ import {
   Divider,
   Radio,
   Button,
+  Switch,
 } from 'antd';
 import {
   SearchOutlined,
   BugOutlined,
   BookOutlined,
   CheckCircleOutlined,
+  EyeInvisibleOutlined,
+  EyeOutlined,
 } from '@ant-design/icons';
 import type { Dungeon } from '../types/dofusdb';
 import { dofusdbService } from '../services/dofusdb.service';
@@ -50,6 +53,7 @@ export function DungeonsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [hideDone, setHideDone] = useState(false);
 
   const { selectedCharacterId } = useCharacterStore();
   const { todoDungeonIds, doneDungeonIds, setDungeonStatus } = useProgressStore();
@@ -70,9 +74,10 @@ export function DungeonsPage() {
         statusFilter === 'all' ||
         (statusFilter === 'todo' && todoDungeonIds.has(d.id)) ||
         (statusFilter === 'done' && doneDungeonIds.has(d.id));
-      return nameMatch && statusMatch;
+      const doneMatch = !hideDone || !doneDungeonIds.has(d.id);
+      return nameMatch && statusMatch && doneMatch;
     });
-  }, [dungeons, search, statusFilter, todoDungeonIds, doneDungeonIds]);
+  }, [dungeons, search, statusFilter, hideDone, todoDungeonIds, doneDungeonIds]);
 
   return (
     <div style={{ padding: 0 }}>
@@ -92,7 +97,7 @@ export function DungeonsPage() {
             </Row>
 
             {selectedCharacterId && (
-              <Row>
+              <Row align="middle" gutter={16}>
                 <Col>
                   <Radio.Group
                     value={statusFilter}
@@ -111,6 +116,20 @@ export function DungeonsPage() {
                       Faits ({doneDungeonIds.size})
                     </Radio.Button>
                   </Radio.Group>
+                </Col>
+                <Col>
+                  <Tooltip title="Masquer les donjons déjà faits">
+                    <Space size={6}>
+                      <Switch
+                        size="small"
+                        checked={hideDone}
+                        onChange={setHideDone}
+                        checkedChildren={<EyeInvisibleOutlined />}
+                        unCheckedChildren={<EyeOutlined />}
+                      />
+                      <Text type="secondary" style={{ fontSize: 12 }}>Masquer les faits</Text>
+                    </Space>
+                  </Tooltip>
                 </Col>
               </Row>
             )}

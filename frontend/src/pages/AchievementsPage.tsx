@@ -15,6 +15,7 @@ import {
   Alert,
   Popconfirm,
   Pagination,
+  Switch,
   theme,
 } from 'antd';
 import type { DataNode } from 'antd/es/tree';
@@ -26,6 +27,8 @@ import {
   CheckCircleFilled,
   CheckCircleOutlined,
   CheckSquareOutlined,
+  EyeInvisibleOutlined,
+  EyeOutlined,
 } from '@ant-design/icons';
 import type { AchievementCategory, Achievement } from '../types/dofusdb';
 import { dofusdbService, pointsColor } from '../services/dofusdb.service';
@@ -139,6 +142,7 @@ export function AchievementsPage() {
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
   const [searchValue, setSearchValue] = useState('');
   const [isSynced, setIsSynced] = useState(true);
+  const [hideCompleted, setHideCompleted] = useState(false);
 
   useEffect(() => {
     dofusdbService
@@ -196,12 +200,14 @@ export function AchievementsPage() {
   };
 
   const filtered = useMemo(() => {
-    if (!searchValue) return achievements;
+    let result = achievements;
+    if (hideCompleted) result = result.filter((a) => !completedAchievementIds.has(a.id));
+    if (!searchValue) return result;
     const q = searchValue.toLowerCase();
-    return achievements.filter(
+    return result.filter(
       (a) => a.name.fr.toLowerCase().includes(q) || a.description?.fr?.toLowerCase().includes(q),
     );
-  }, [achievements, searchValue]);
+  }, [achievements, searchValue, hideCompleted, completedAchievementIds]);
 
   const pagedAchievements = useMemo(() => {
     const start = (page - 1) * PAGE_SIZE;
@@ -309,6 +315,17 @@ export function AchievementsPage() {
               <Text type="secondary">Sélectionnez une catégorie</Text>
             )}
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              {selectedCharacterId && (
+                <Tooltip title="Masquer les succès déjà complétés">
+                  <Switch
+                    size="small"
+                    checked={hideCompleted}
+                    onChange={setHideCompleted}
+                    checkedChildren={<EyeInvisibleOutlined />}
+                    unCheckedChildren={<EyeOutlined />}
+                  />
+                </Tooltip>
+              )}
               {selectedCatId && selectedCharacterId && !catIsComplete && (
                 <Popconfirm
                   title="Valider tous les succès de cette catégorie ?"

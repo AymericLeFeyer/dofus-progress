@@ -257,12 +257,12 @@ export function QuestsPage() {
                         padding: '6px 12px',
                         cursor: 'pointer',
                         background:
-                          selectedCat?.id === cat.id ? '#fff7e6' : complete ? '#f6ffed' : 'transparent',
+                          selectedCat?.id === cat.id ? token.colorWarningBg : complete ? token.colorSuccessBg : 'transparent',
                         borderLeft:
                           selectedCat?.id === cat.id
                             ? '3px solid #c0902b'
                             : complete
-                              ? '3px solid #52c41a'
+                              ? `3px solid ${token.colorSuccess}`
                               : '3px solid transparent',
                         transition: 'all 0.15s',
                       }}
@@ -285,7 +285,7 @@ export function QuestsPage() {
                               fontSize: 13,
                               lineHeight: '18px',
                               flex: 1,
-                              color: complete ? '#52c41a' : undefined,
+                              color: complete ? token.colorSuccess : undefined,
                             }}
                             ellipsis
                           >
@@ -297,9 +297,9 @@ export function QuestsPage() {
                                 fontSize: 10,
                                 padding: '0 4px',
                                 margin: 0,
-                                backgroundColor: '#f6ffed',
-                                borderColor: '#52c41a',
-                                color: '#52c41a',
+                                backgroundColor: token.colorSuccessBg,
+                                borderColor: token.colorSuccess,
+                                color: token.colorSuccess,
                               }}
                             >
                               100%
