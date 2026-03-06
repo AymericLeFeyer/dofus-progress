@@ -144,7 +144,7 @@ export function ActivityTab({ guildProgress, dungeonMap, catNames }: Props) {
 
   const { selectedCharacterId } = useCharacterStore();
   const {
-    completedQuestIds, completedAchievementIds, todoDungeonIds, doneDungeonIds,
+    completedQuestIds, completedAchievementIds, doneDungeonIds,
     setQuestStatus, toggleAchievement, setDungeonStatus,
   } = useProgressStore();
 
@@ -179,20 +179,14 @@ export function ActivityTab({ guildProgress, dungeonMap, catNames }: Props) {
     [guildProgress],
   );
 
-  const memberNeedsQuest = (mp: GuildMemberProgress, id: number) => {
-    if (mp.characterId === selectedCharacterId) return !completedQuestIds.has(id);
-    return !completedQuestSets.get(mp.characterId)?.has(id);
-  };
+  const memberNeedsQuest = (mp: GuildMemberProgress, id: number) =>
+    !completedQuestSets.get(mp.characterId)?.has(id);
 
-  const memberNeedsDungeon = (mp: GuildMemberProgress, id: number) => {
-    if (mp.characterId === selectedCharacterId) return todoDungeonIds.has(id) || !doneDungeonIds.has(id);
-    return todoDungeonSets.get(mp.characterId)?.has(id) || !doneDungeonSets.get(mp.characterId)?.has(id);
-  };
+  const memberNeedsDungeon = (mp: GuildMemberProgress, id: number) =>
+    todoDungeonSets.get(mp.characterId)?.has(id) || !doneDungeonSets.get(mp.characterId)?.has(id);
 
-  const memberNeedsAchievement = (mp: GuildMemberProgress, id: number) => {
-    if (mp.characterId === selectedCharacterId) return !completedAchievementIds.has(id);
-    return !completedAchSets.get(mp.characterId)?.has(id);
-  };
+  const memberNeedsAchievement = (mp: GuildMemberProgress, id: number) =>
+    !completedAchSets.get(mp.characterId)?.has(id);
 
   function applyFilter<T>(
     items: T[],
