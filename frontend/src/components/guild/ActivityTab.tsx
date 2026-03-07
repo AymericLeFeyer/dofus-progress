@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Select, Checkbox, Button, Card, Tag, Space, Typography,
   Spin, Row, Col, Empty, Tooltip, InputNumber,
@@ -7,9 +7,10 @@ import {
   ThunderboltOutlined, BookOutlined, TrophyOutlined,
   ReloadOutlined, CompassOutlined, CheckOutlined,
 } from '@ant-design/icons';
-import type { GuildMemberProgress } from '../../services/progress.service';
+import type { GuildMemberProgress, GuildActivityResult, QuestActivity, AchievementActivity, DungeonActivity } from '../../services/progress.service';
+import { progressService } from '../../services/progress.service';
 import { dofusdbService, levelRange, pointsColor } from '../../services/dofusdb.service';
-import type { Dungeon, Achievement } from '../../types/dofusdb';
+import type { Dungeon } from '../../types/dofusdb';
 import { ClassAvatar } from '../character/ClassAvatar';
 import { useCharacterStore } from '../../stores/characterStore';
 import { useProgressStore } from '../../stores/progressStore';
@@ -18,30 +19,11 @@ const { Text } = Typography;
 
 type ActivityType = 'quests' | 'dungeons' | 'achievements';
 
-type QuestStub = {
-  id: number;
-  name: { fr: string };
-  categoryId: number;
-  levelMin: number;
-  levelMax: number;
-  isDungeonQuest: boolean;
-  isPartyQuest: boolean;
-  isEvent: boolean;
-};
-
 type TagDef = { label: string; color?: string; icon?: React.ReactNode };
 
-type Suggestions = {
-  quests?: QuestStub[];
-  dungeons?: Dungeon[];
-  achievements?: Achievement[];
-};
+type NeededByRef = { characterId: string; name: string; class: string };
 
-function shuffle<T>(arr: T[]): T[] {
-  return [...arr].sort(() => Math.random() - 0.5);
-}
-
-function MemberAvatars({ members }: { members: GuildMemberProgress[] }) {
+function MemberAvatars({ members }: { members: NeededByRef[] }) {
   if (!members.length) return null;
   return (
     <Space size={4}>
@@ -55,11 +37,11 @@ function MemberAvatars({ members }: { members: GuildMemberProgress[] }) {
 }
 
 function SuggestionItem({
-  title, tags, members, imgUrl, isValidated, onValidate, canValidate,
+  title, tags, neededBy, imgUrl, isValidated, onValidate, canValidate,
 }: {
   title: string;
   tags: TagDef[];
-  members: GuildMemberProgress[];
+  neededBy: NeededByRef[];
   imgUrl?: string;
   isValidated: boolean;
   canValidate: boolean;
@@ -103,7 +85,7 @@ function SuggestionItem({
           </Space>
         )}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <MemberAvatars members={members} />
+          <MemberAvatars members={neededBy} />
           {canValidate && (
             <Button
               size="small"
@@ -129,20 +111,16 @@ interface Props {
   guildProgress: GuildMemberProgress[];
   dungeonMap: Map<number, Dungeon>;
   catNames: Record<number, string>;
-  onRefreshProgress: () => Promise<GuildMemberProgress[]>;
 }
 
-export function ActivityTab({ guildProgress, dungeonMap, catNames, onRefreshProgress }: Props) {
+export function ActivityTab({ guildProgress, dungeonMap, catNames }: Props) {
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [selectedTypes, setSelectedTypes] = useState<ActivityType[]>([]);
   const [beneficialToAll, setBeneficialToAll] = useState(false);
-  const [suggestions, setSuggestions] = useState<Suggestions | null>(null);
-  const [lastProgress, setLastProgress] = useState<GuildMemberProgress[]>(guildProgress);
+  const [suggestions, setSuggestions] = useState<GuildActivityResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [count, setCount] = useState(3);
   const [achCatNames, setAchCatNames] = useState<Record<number, string>>({});
-  const [allQuests, setAllQuests] = useState<QuestStub[]>([]);
-  const [allAchievements, setAllAchievements] = useState<Achievement[]>([]);
 
   const { selectedCharacterId } = useCharacterStore();
   const {
@@ -156,82 +134,19 @@ export function ActivityTab({ guildProgress, dungeonMap, catNames, onRefreshProg
       cats.forEach((c) => { m[c.id] = c.name.fr; });
       setAchCatNames(m);
     }).catch(() => {});
-
-    dofusdbService.getAllQuests().then((qs) => setAllQuests(qs as QuestStub[])).catch(() => {});
-    dofusdbService.getAllAchievements().then(setAllAchievements).catch(() => {});
   }, []);
-
-  // Use Sets for O(1) lookup on completed arrays (used by getMembersForItem for display)
-  const completedQuestSets = useMemo(() =>
-    new Map(guildProgress.map((mp) => [mp.characterId, new Set(mp.completedQuestIds)])),
-    [guildProgress],
-  );
-  const completedAchSets = useMemo(() =>
-    new Map(guildProgress.map((mp) => [mp.characterId, new Set(mp.completedAchievementIds)])),
-    [guildProgress],
-  );
-  const doneDungeonSets = useMemo(() =>
-    new Map(guildProgress.map((mp) => [mp.characterId, new Set(mp.doneDungeonIds ?? [])])),
-    [guildProgress],
-  );
-  const todoDungeonSets = useMemo(() =>
-    new Map(guildProgress.map((mp) => [mp.characterId, new Set(mp.todoDungeonIds ?? [])])),
-    [guildProgress],
-  );
-
-  const memberNeedsQuest = (mp: GuildMemberProgress, id: number) =>
-    !completedQuestSets.get(mp.characterId)?.has(id);
-
-  const memberNeedsDungeon = (mp: GuildMemberProgress, id: number) =>
-    todoDungeonSets.get(mp.characterId)?.has(id) || !doneDungeonSets.get(mp.characterId)?.has(id);
-
-  const memberNeedsAchievement = (mp: GuildMemberProgress, id: number) =>
-    !completedAchSets.get(mp.characterId)?.has(id);
-
-  function getMembersForItem(id: number, needs: (mp: GuildMemberProgress, id: number) => boolean) {
-    return lastProgress.filter((mp) => selectedMemberIds.includes(mp.characterId) && needs(mp, id));
-  }
 
   async function generate() {
     if (!selectedMemberIds.length || !selectedTypes.length) return;
     setLoading(true);
     try {
-      const freshProgress = await onRefreshProgress();
-      setLastProgress(freshProgress);
-      const freshMembers = freshProgress.filter((mp) => selectedMemberIds.includes(mp.characterId));
-
-      const freshCompletedQuestSets = new Map(freshProgress.map((mp) => [mp.characterId, new Set(mp.completedQuestIds)]));
-      const freshCompletedAchSets = new Map(freshProgress.map((mp) => [mp.characterId, new Set(mp.completedAchievementIds)]));
-      const freshDoneDungeonSets = new Map(freshProgress.map((mp) => [mp.characterId, new Set(mp.doneDungeonIds ?? [])]));
-      const freshTodoDungeonSets = new Map(freshProgress.map((mp) => [mp.characterId, new Set(mp.todoDungeonIds ?? [])]));
-
-      const freshNeedsQuest = (mp: GuildMemberProgress, id: number) => !freshCompletedQuestSets.get(mp.characterId)?.has(id);
-      const freshNeedsDungeon = (mp: GuildMemberProgress, id: number) =>
-        freshTodoDungeonSets.get(mp.characterId)?.has(id) || !freshDoneDungeonSets.get(mp.characterId)?.has(id);
-      const freshNeedsAchievement = (mp: GuildMemberProgress, id: number) => !freshCompletedAchSets.get(mp.characterId)?.has(id);
-
-      function filterFresh<T>(items: T[], getId: (item: T) => number, needs: (mp: GuildMemberProgress, id: number) => boolean): T[] {
-        if (!freshMembers.length) return [];
-        return items.filter((item) => {
-          const id = getId(item);
-          return beneficialToAll
-            ? freshMembers.every((mp) => needs(mp, id))
-            : freshMembers.some((mp) => needs(mp, id));
-        });
-      }
-
-      const result: Suggestions = {};
-
-      if (selectedTypes.includes('quests')) {
-        result.quests = shuffle(filterFresh(allQuests, (q) => q.id, freshNeedsQuest)).slice(0, count);
-      }
-      if (selectedTypes.includes('dungeons')) {
-        result.dungeons = shuffle(filterFresh([...dungeonMap.values()], (d) => d.id, freshNeedsDungeon)).slice(0, count);
-      }
-      if (selectedTypes.includes('achievements')) {
-        result.achievements = shuffle(filterFresh(allAchievements, (a) => a.id, freshNeedsAchievement)).slice(0, count);
-      }
-
+      const result = await progressService.getGuildActivity({
+        characterIds: selectedMemberIds,
+        types: selectedTypes,
+        beneficialToAll,
+        count,
+        allDungeonIds: [...dungeonMap.keys()],
+      });
       setSuggestions(result);
     } finally {
       setLoading(false);
@@ -240,14 +155,111 @@ export function ActivityTab({ guildProgress, dungeonMap, catNames, onRefreshProg
 
   const canGenerate = selectedMemberIds.length > 0 && selectedTypes.length > 0;
   const typeCount = selectedTypes.length;
-  const dataLoaded = allQuests.length > 0 && allAchievements.length > 0;
+
+  const questSection = (quests: QuestActivity[]) => (
+    <Col xs={24} md={typeCount === 2 ? 12 : 24} xl={typeCount === 3 ? 8 : typeCount === 2 ? 12 : 24}>
+      <Card
+        size="small"
+        title={<Space><BookOutlined style={{ color: '#1677ff' }} /><span>Quêtes</span></Space>}
+        style={{ borderTop: '3px solid #1677ff', height: '100%' }}
+      >
+        {!quests.length ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Aucune quête disponible" />
+        ) : (
+          <Space direction="vertical" style={{ width: '100%' }} size={8}>
+            {quests.map((quest) => (
+              <SuggestionItem
+                key={quest.id}
+                title={quest.name.fr}
+                tags={[
+                  catNames[quest.categoryId] ? { label: catNames[quest.categoryId] } : null,
+                  levelRange(quest.levelMin, quest.levelMax) ? { label: levelRange(quest.levelMin, quest.levelMax), color: 'orange' } : null,
+                  quest.isDungeonQuest ? { label: 'Donjon', color: 'volcano', icon: <ThunderboltOutlined /> } : null,
+                  quest.isPartyQuest ? { label: 'Groupe', color: 'purple' } : null,
+                  quest.isEvent ? { label: 'Événement', color: 'cyan' } : null,
+                ].filter(Boolean) as TagDef[]}
+                neededBy={quest.neededBy}
+                isValidated={completedQuestIds.has(quest.id)}
+                canValidate={!!selectedCharacterId}
+                onValidate={() => setQuestStatus(selectedCharacterId!, quest.id, 'completed')}
+              />
+            ))}
+          </Space>
+        )}
+      </Card>
+    </Col>
+  );
+
+  const dungeonSection = (dungeons: DungeonActivity[]) => (
+    <Col xs={24} md={typeCount === 2 ? 12 : 24} xl={typeCount === 3 ? 8 : typeCount === 2 ? 12 : 24}>
+      <Card
+        size="small"
+        title={<Space><CompassOutlined style={{ color: '#c0902b' }} /><span>Donjons</span></Space>}
+        style={{ borderTop: '3px solid #c0902b', height: '100%' }}
+      >
+        {!dungeons.length ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Aucun donjon disponible" />
+        ) : (
+          <Space direction="vertical" style={{ width: '100%' }} size={8}>
+            {dungeons.map((dungeon) => {
+              const info = dungeonMap.get(dungeon.id);
+              return (
+                <SuggestionItem
+                  key={dungeon.id}
+                  title={info?.name.fr ?? `Donjon #${dungeon.id}`}
+                  tags={[
+                    info && info.level > 0 ? { label: `Niv. ${info.level}`, color: 'orange' } : null,
+                  ].filter(Boolean) as TagDef[]}
+                  neededBy={dungeon.neededBy}
+                  isValidated={doneDungeonIds.has(dungeon.id)}
+                  canValidate={!!selectedCharacterId}
+                  onValidate={() => setDungeonStatus(selectedCharacterId!, dungeon.id, { isDone: true })}
+                />
+              );
+            })}
+          </Space>
+        )}
+      </Card>
+    </Col>
+  );
+
+  const achievementSection = (achievements: AchievementActivity[]) => (
+    <Col xs={24} md={typeCount === 2 ? 12 : 24} xl={typeCount === 3 ? 8 : typeCount === 2 ? 12 : 24}>
+      <Card
+        size="small"
+        title={<Space><TrophyOutlined style={{ color: '#c0902b' }} /><span>Succès</span></Space>}
+        style={{ borderTop: '3px solid #f5c842', height: '100%' }}
+      >
+        {!achievements.length ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Aucun succès disponible" />
+        ) : (
+          <Space direction="vertical" style={{ width: '100%' }} size={8}>
+            {achievements.map((ach) => (
+              <SuggestionItem
+                key={ach.id}
+                title={ach.name.fr}
+                imgUrl={ach.img ?? undefined}
+                tags={[
+                  achCatNames[ach.categoryId] ? { label: achCatNames[ach.categoryId] } : null,
+                  ach.points > 0 ? { label: `${ach.points} pts`, color: pointsColor(ach.points) } : null,
+                ].filter(Boolean) as TagDef[]}
+                neededBy={ach.neededBy}
+                isValidated={completedAchievementIds.has(ach.id)}
+                canValidate={!!selectedCharacterId && !completedAchievementIds.has(ach.id)}
+                onValidate={() => toggleAchievement(selectedCharacterId!, ach.id)}
+              />
+            ))}
+          </Space>
+        )}
+      </Card>
+    </Col>
+  );
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%', padding: '16px 0 60px' }}>
       {/* Configuration */}
       <Card size="small">
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
-          {/* Participants */}
           <div>
             <Text strong style={{ display: 'block', marginBottom: 8 }}>Participants</Text>
             <Select
@@ -283,7 +295,6 @@ export function ActivityTab({ guildProgress, dungeonMap, catNames, onRefreshProg
             />
           </div>
 
-          {/* Type d'activité */}
           <div>
             <Text strong style={{ display: 'block', marginBottom: 8 }}>Type d'activité</Text>
             <Checkbox.Group
@@ -313,7 +324,6 @@ export function ActivityTab({ guildProgress, dungeonMap, catNames, onRefreshProg
             </Checkbox.Group>
           </div>
 
-          {/* Bénéfique à tous */}
           <Checkbox
             checked={beneficialToAll}
             onChange={(e) => setBeneficialToAll(e.target.checked)}
@@ -340,16 +350,15 @@ export function ActivityTab({ guildProgress, dungeonMap, catNames, onRefreshProg
             type="primary"
             icon={suggestions ? <ReloadOutlined /> : <TrophyOutlined />}
             onClick={generate}
-            disabled={!canGenerate || !dataLoaded}
-            loading={loading || (!dataLoaded && selectedTypes.length > 0)}
+            disabled={!canGenerate}
+            loading={loading}
             style={{ background: '#c0902b', borderColor: '#c0902b' }}
           >
-            {!dataLoaded ? 'Chargement des données...' : suggestions ? 'Relancer' : 'Générer des suggestions'}
+            {suggestions ? 'Relancer' : 'Générer des suggestions'}
           </Button>
         </Space>
       </Card>
 
-      {/* Résultats */}
       {loading && (
         <div style={{ textAlign: 'center', padding: 40 }}>
           <Spin size="large" />
@@ -358,104 +367,9 @@ export function ActivityTab({ guildProgress, dungeonMap, catNames, onRefreshProg
 
       {!loading && suggestions && (
         <Row gutter={[16, 16]}>
-          {/* Quêtes */}
-          {selectedTypes.includes('quests') && (
-            <Col xs={24} md={typeCount === 2 ? 12 : 24} xl={typeCount === 3 ? 8 : typeCount === 2 ? 12 : 24}>
-              <Card
-                size="small"
-                title={<Space><BookOutlined style={{ color: '#1677ff' }} /><span>Quêtes</span></Space>}
-                style={{ borderTop: '3px solid #1677ff', height: '100%' }}
-              >
-                {!suggestions.quests?.length ? (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Aucune quête disponible" />
-                ) : (
-                  <Space direction="vertical" style={{ width: '100%' }} size={8}>
-                    {suggestions.quests.map((quest) => (
-                      <SuggestionItem
-                        key={quest.id}
-                        title={quest.name.fr}
-                        tags={[
-                          catNames[quest.categoryId] ? { label: catNames[quest.categoryId] } : null,
-                          levelRange(quest.levelMin, quest.levelMax) ? { label: levelRange(quest.levelMin, quest.levelMax), color: 'orange' } : null,
-                          quest.isDungeonQuest ? { label: 'Donjon', color: 'volcano', icon: <ThunderboltOutlined /> } : null,
-                          quest.isPartyQuest ? { label: 'Groupe', color: 'purple' } : null,
-                          quest.isEvent ? { label: 'Événement', color: 'cyan' } : null,
-                        ].filter(Boolean) as TagDef[]}
-                        members={getMembersForItem(quest.id, memberNeedsQuest)}
-                        isValidated={completedQuestIds.has(quest.id)}
-                        canValidate={!!selectedCharacterId}
-                        onValidate={() => setQuestStatus(selectedCharacterId!, quest.id, 'completed')}
-                      />
-                    ))}
-                  </Space>
-                )}
-              </Card>
-            </Col>
-          )}
-
-          {/* Donjons */}
-          {selectedTypes.includes('dungeons') && (
-            <Col xs={24} md={typeCount === 2 ? 12 : 24} xl={typeCount === 3 ? 8 : typeCount === 2 ? 12 : 24}>
-              <Card
-                size="small"
-                title={<Space><CompassOutlined style={{ color: '#c0902b' }} /><span>Donjons</span></Space>}
-                style={{ borderTop: '3px solid #c0902b', height: '100%' }}
-              >
-                {!suggestions.dungeons?.length ? (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Aucun donjon disponible" />
-                ) : (
-                  <Space direction="vertical" style={{ width: '100%' }} size={8}>
-                    {suggestions.dungeons.map((dungeon) => (
-                      <SuggestionItem
-                        key={dungeon.id}
-                        title={dungeon.name.fr}
-                        tags={[
-                          dungeon.level > 0 ? { label: `Niv. ${dungeon.level}`, color: 'orange' } : null,
-                        ].filter(Boolean) as TagDef[]}
-                        members={getMembersForItem(dungeon.id, memberNeedsDungeon)}
-                        isValidated={doneDungeonIds.has(dungeon.id)}
-                        canValidate={!!selectedCharacterId}
-                        onValidate={() => setDungeonStatus(selectedCharacterId!, dungeon.id, { isDone: true })}
-                      />
-                    ))}
-                  </Space>
-                )}
-              </Card>
-            </Col>
-          )}
-
-          {/* Succès */}
-          {selectedTypes.includes('achievements') && (
-            <Col xs={24} md={typeCount === 2 ? 12 : 24} xl={typeCount === 3 ? 8 : typeCount === 2 ? 12 : 24}>
-              <Card
-                size="small"
-                title={<Space><TrophyOutlined style={{ color: '#c0902b' }} /><span>Succès</span></Space>}
-                style={{ borderTop: '3px solid #f5c842', height: '100%' }}
-              >
-                {!suggestions.achievements?.length ? (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Aucun succès disponible" />
-                ) : (
-                  <Space direction="vertical" style={{ width: '100%' }} size={8}>
-                    {suggestions.achievements.map((ach) => (
-                      <SuggestionItem
-                        key={ach.id}
-                        title={ach.name.fr}
-                        imgUrl={ach.img}
-                        tags={[
-                          achCatNames[ach.categoryId] ? { label: achCatNames[ach.categoryId] } : null,
-                          ach.points > 0 ? { label: `${ach.points} pts`, color: pointsColor(ach.points) } : null,
-                        ].filter(Boolean) as TagDef[]}
-                        members={getMembersForItem(ach.id, memberNeedsAchievement)}
-                        isValidated={completedAchievementIds.has(ach.id)}
-                        canValidate={!!selectedCharacterId && !completedAchievementIds.has(ach.id)}
-                        onValidate={() => toggleAchievement(selectedCharacterId!, ach.id)}
-                      />
-                    ))}
-                  </Space>
-                )}
-              </Card>
-            </Col>
-          )}
+          {selectedTypes.includes('quests') && suggestions.quests && questSection(suggestions.quests)}
+          {selectedTypes.includes('dungeons') && suggestions.dungeons && dungeonSection(suggestions.dungeons)}
+          {selectedTypes.includes('achievements') && suggestions.achievements && achievementSection(suggestions.achievements)}
         </Row>
       )}
     </Space>

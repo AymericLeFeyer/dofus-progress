@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { prisma } from '../../../infrastructure/prisma/client';
 import { authenticate } from '../middleware/authenticate';
 
@@ -66,7 +67,6 @@ async function buildProgressForCharacter(characterId: string) {
     completedAchievementIds,
     totalPoints,
     achievementCategoryProgress,
-    // Alias pour la compat frontend existant
     questCategoryProgress: completedQuestCategoryProgress,
     completedQuestCategoryProgress,
     startedQuestCategoryProgress,
@@ -74,6 +74,46 @@ async function buildProgressForCharacter(characterId: string) {
     todoDungeonIds,
     doneDungeonIds,
   };
+}
+
+// Summary allégé pour guild-progress (pas les listes complètes de complétions)
+async function buildGuildMemberSummary(characterId: string) {
+  const [questRows, achRows, dungeonRows] = await Promise.all([
+    prisma.characterQuestProgress.findMany({ where: { characterId }, select: { questId: true, status: true } }),
+    prisma.characterAchievementProgress.findMany({ where: { characterId }, select: { achievementId: true } }),
+    prisma.characterDungeonProgress.findMany({ where: { characterId }, select: { dungeonId: true, isTodo: true } }),
+  ]);
+
+  const blockedQuestIds = questRows.filter((r) => r.status === 'blocked').map((r) => r.questId);
+  const achievementIds = achRows.map((r) => r.achievementId);
+
+  let totalPoints = 0;
+  if (achievementIds.length > 0) {
+    const achs = await prisma.achievement.findMany({
+      where: { id: { in: achievementIds } },
+      select: { points: true },
+    });
+    totalPoints = achs.reduce((sum, a) => sum + a.points, 0);
+  }
+
+  return {
+    totalPoints,
+    achievementCount: achievementIds.length,
+    completedQuestCount: questRows.filter((r) => r.status === 'completed').length,
+    startedQuestCount: questRows.filter((r) => r.status === 'started').length,
+    blockedQuestCount: blockedQuestIds.length,
+    blockedQuestIds,
+    todoDungeonIds: dungeonRows.filter((r) => r.isTodo).map((r) => r.dungeonId),
+  };
+}
+
+function shuffle<T>(arr: T[]): T[] {
+  const out = [...arr];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────
@@ -92,7 +132,7 @@ export async function progressRoutes(fastify: FastifyInstance) {
     },
   );
 
-  // GET /api/profile/:characterId → profil public (tout utilisateur authentifié)
+  // GET /api/profile/:characterId → profil public
   fastify.get<{ Params: { characterId: string } }>(
     '/profile/:characterId',
     { onRequest: [authenticate] },
@@ -143,7 +183,7 @@ export async function progressRoutes(fastify: FastifyInstance) {
     );
   });
 
-  // GET /api/guild-progress/:guildId → progression de tous les membres
+  // GET /api/guild-progress/:guildId → résumé de tous les membres (allégé)
   fastify.get<{ Params: { guildId: string } }>(
     '/guild-progress/:guildId',
     { onRequest: [authenticate] },
@@ -151,7 +191,6 @@ export async function progressRoutes(fastify: FastifyInstance) {
       const { guildId } = request.params;
       const { userId } = request.user as { userId: string };
 
-      // Vérifier que l'utilisateur est membre de cette guilde
       const userChars = await prisma.character.findMany({ where: { userId }, select: { id: true } });
       const userCharIds = userChars.map((c) => c.id);
       const membership = await prisma.guildMember.findFirst({
@@ -166,14 +205,14 @@ export async function progressRoutes(fastify: FastifyInstance) {
 
       const membersWithProgress = await Promise.all(
         members.map(async (m) => {
-          const progress = await buildProgressForCharacter(m.characterId);
+          const summary = await buildGuildMemberSummary(m.characterId);
           return {
             characterId: m.characterId,
             name: m.character.name,
             class: m.character.class,
             level: m.character.level,
             role: m.role,
-            ...progress,
+            ...summary,
           };
         }),
       );
@@ -181,6 +220,162 @@ export async function progressRoutes(fastify: FastifyInstance) {
       return { members: membersWithProgress };
     },
   );
+
+  // POST /api/guild-activity → suggestions d'activité pour un groupe de personnages
+  const guildActivitySchema = z.object({
+    characterIds: z.array(z.string()).min(1).max(50),
+    types: z.array(z.enum(['quests', 'dungeons', 'achievements'])).min(1),
+    beneficialToAll: z.boolean(),
+    count: z.number().int().min(1).max(20),
+    allDungeonIds: z.array(z.number().int()).optional().default([]),
+  });
+
+  fastify.post('/guild-activity', { onRequest: [authenticate] }, async (request, reply) => {
+    const parsed = guildActivitySchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Données invalides', details: parsed.error.errors });
+
+    const { characterIds, types, beneficialToAll, count, allDungeonIds } = parsed.data;
+    const { userId } = request.user as { userId: string };
+
+    // Vérifier que l'utilisateur est membre de la même guilde que les personnages demandés
+    const userChars = await prisma.character.findMany({ where: { userId }, select: { id: true } });
+    const userCharIds = new Set(userChars.map((c) => c.id));
+
+    const members = await prisma.guildMember.findMany({
+      where: { characterId: { in: characterIds } },
+      select: {
+        guildId: true,
+        characterId: true,
+        character: { select: { name: true, class: true } },
+      },
+    });
+
+    if (members.length === 0) return reply.status(400).send({ error: 'Aucun personnage valide' });
+
+    const guildIds = [...new Set(members.map((m) => m.guildId))];
+    if (guildIds.length > 1) return reply.status(400).send({ error: 'Les personnages doivent être dans la même guilde' });
+
+    const guildId = guildIds[0];
+    const isMember = await prisma.guildMember.findFirst({
+      where: { guildId, characterId: { in: [...userCharIds] } },
+    });
+    if (!isMember) return reply.status(403).send({ error: 'Non membre de cette guilde' });
+
+    const charInfoMap = new Map(
+      members.map((m) => [m.characterId, { name: m.character.name, class: m.character.class }]),
+    );
+
+    // Récupérer la progression de chaque personnage
+    const progressData = await Promise.all(
+      characterIds.map(async (characterId) => {
+        const [questRows, achRows, dungeonRows] = await Promise.all([
+          prisma.characterQuestProgress.findMany({
+            where: { characterId, status: 'completed' },
+            select: { questId: true },
+          }),
+          prisma.characterAchievementProgress.findMany({
+            where: { characterId },
+            select: { achievementId: true },
+          }),
+          prisma.characterDungeonProgress.findMany({
+            where: { characterId, isDone: true },
+            select: { dungeonId: true },
+          }),
+        ]);
+        return {
+          characterId,
+          completedQuestIds: new Set(questRows.map((r) => r.questId)),
+          completedAchIds: new Set(achRows.map((r) => r.achievementId)),
+          doneDungeonIds: new Set(dungeonRows.map((r) => r.dungeonId)),
+        };
+      }),
+    );
+
+    // Calcule les neededBy pour un item donné
+    function getNeededBy(id: number, needsFn: (pd: typeof progressData[0]) => boolean) {
+      return progressData
+        .filter((pd) => needsFn(pd))
+        .map((pd) => ({
+          characterId: pd.characterId,
+          name: charInfoMap.get(pd.characterId)!.name,
+          class: charInfoMap.get(pd.characterId)!.class,
+        }));
+    }
+
+    // Calcule les IDs exclus selon beneficialToAll
+    function buildExcludedIds(completedSets: Set<number>[]): Set<number> {
+      if (beneficialToAll) {
+        // Exclure si AU MOINS UN personnage a complété → union
+        const excluded = new Set<number>();
+        completedSets.forEach((s) => s.forEach((id) => excluded.add(id)));
+        return excluded;
+      } else {
+        // Exclure si TOUS les personnages ont complété → intersection
+        if (completedSets.length === 0) return new Set();
+        const counts = new Map<number, number>();
+        completedSets.forEach((s) => s.forEach((id) => counts.set(id, (counts.get(id) ?? 0) + 1)));
+        const excluded = new Set<number>();
+        counts.forEach((c, id) => { if (c === completedSets.length) excluded.add(id); });
+        return excluded;
+      }
+    }
+
+    const result: Record<string, unknown> = {};
+
+    if (types.includes('quests')) {
+      const excludedQuestIds = buildExcludedIds(progressData.map((pd) => pd.completedQuestIds));
+      const allQuests = await prisma.quest.findMany({
+        where: excludedQuestIds.size > 0 ? { id: { notIn: [...excludedQuestIds] } } : undefined,
+        select: {
+          id: true, nameFr: true, categoryId: true,
+          levelMin: true, levelMax: true,
+          isDungeonQuest: true, isPartyQuest: true, isEvent: true,
+        },
+      });
+      const picked = shuffle(allQuests).slice(0, count);
+      result.quests = picked.map((q) => ({
+        id: q.id,
+        name: { fr: q.nameFr },
+        categoryId: q.categoryId,
+        levelMin: q.levelMin,
+        levelMax: q.levelMax,
+        isDungeonQuest: q.isDungeonQuest,
+        isPartyQuest: q.isPartyQuest,
+        isEvent: q.isEvent,
+        neededBy: getNeededBy(q.id, (pd) => !pd.completedQuestIds.has(q.id)),
+      }));
+    }
+
+    if (types.includes('achievements')) {
+      const excludedAchIds = buildExcludedIds(progressData.map((pd) => pd.completedAchIds));
+      const allAchs = await prisma.achievement.findMany({
+        where: excludedAchIds.size > 0 ? { id: { notIn: [...excludedAchIds] } } : undefined,
+        select: { id: true, nameFr: true, categoryId: true, points: true, level: true, img: true },
+      });
+      const picked = shuffle(allAchs).slice(0, count);
+      result.achievements = picked.map((a) => ({
+        id: a.id,
+        name: { fr: a.nameFr },
+        categoryId: a.categoryId,
+        points: a.points,
+        level: a.level,
+        img: a.img,
+        neededBy: getNeededBy(a.id, (pd) => !pd.completedAchIds.has(a.id)),
+      }));
+    }
+
+    if (types.includes('dungeons') && allDungeonIds.length > 0) {
+      const excludedDungeonIds = buildExcludedIds(progressData.map((pd) => pd.doneDungeonIds));
+      const eligibleDungeonIds = allDungeonIds.filter((id) => !excludedDungeonIds.has(id));
+      const picked = shuffle(eligibleDungeonIds).slice(0, count);
+      result.dungeons = picked.map((id) => ({
+        id,
+        neededBy: getNeededBy(id, (pd) => !pd.doneDungeonIds.has(id)),
+      }));
+    }
+
+    return result;
+  });
 
   // POST /api/progress/:characterId/quest/:questId → toggle 3 états
   fastify.post<{ Params: { characterId: string; questId: string } }>(
@@ -211,7 +406,6 @@ export async function progressRoutes(fastify: FastifyInstance) {
         return { status: 'completed' };
       }
 
-      // completed → supprimer
       await prisma.characterQuestProgress.delete({
         where: { characterId_questId: { characterId, questId: Number(questId) } },
       });
@@ -269,7 +463,6 @@ export async function progressRoutes(fastify: FastifyInstance) {
         return { completed: false, cascadedQuestIds: [] };
       }
 
-      // Récupérer les quêtes liées à ce succès
       const achievement = await prisma.achievement.findUnique({
         where: { id: Number(achievementId) },
         select: { questIds: true },

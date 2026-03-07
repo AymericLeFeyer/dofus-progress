@@ -9,7 +9,7 @@ export interface CharacterProgress {
   completedAchievementIds: number[];
   totalPoints: number;
   achievementCategoryProgress: Record<number, number>;
-  questCategoryProgress: Record<number, number>;        // compat (= completed)
+  questCategoryProgress: Record<number, number>;
   completedQuestCategoryProgress: Record<number, number>;
   startedQuestCategoryProgress: Record<number, number>;
   blockedQuestCategoryProgress: Record<number, number>;
@@ -17,23 +17,60 @@ export interface CharacterProgress {
   doneDungeonIds: number[];
 }
 
+// Résumé allégé retourné par guild-progress (pas les listes complètes de complétions)
 export interface GuildMemberProgress {
   characterId: string;
   name: string;
   class: string;
   level: number;
   role: string;
-  completedQuestIds: number[];
-  startedQuestIds: number[];
-  blockedQuestIds: number[];
-  completedAchievementIds: number[];
   totalPoints: number;
-  achievementCategoryProgress: Record<number, number>;
-  completedQuestCategoryProgress: Record<number, number>;
-  startedQuestCategoryProgress: Record<number, number>;
-  blockedQuestCategoryProgress: Record<number, number>;
+  achievementCount: number;
+  completedQuestCount: number;
+  startedQuestCount: number;
+  blockedQuestCount: number;
+  blockedQuestIds: number[];
   todoDungeonIds: number[];
-  doneDungeonIds: number[];
+}
+
+// Types pour guild-activity
+export interface ActivityCharacterRef {
+  characterId: string;
+  name: string;
+  class: string;
+}
+
+export interface QuestActivity {
+  id: number;
+  name: { fr: string };
+  categoryId: number;
+  levelMin: number;
+  levelMax: number;
+  isDungeonQuest: boolean;
+  isPartyQuest: boolean;
+  isEvent: boolean;
+  neededBy: ActivityCharacterRef[];
+}
+
+export interface AchievementActivity {
+  id: number;
+  name: { fr: string };
+  categoryId: number;
+  points: number;
+  level: number;
+  img: string | null;
+  neededBy: ActivityCharacterRef[];
+}
+
+export interface DungeonActivity {
+  id: number;
+  neededBy: ActivityCharacterRef[];
+}
+
+export interface GuildActivityResult {
+  quests?: QuestActivity[];
+  achievements?: AchievementActivity[];
+  dungeons?: DungeonActivity[];
 }
 
 export const progressService = {
@@ -49,6 +86,17 @@ export const progressService = {
 
   async getGuildProgress(guildId: string): Promise<{ members: GuildMemberProgress[] }> {
     const { data } = await api.get<{ members: GuildMemberProgress[] }>(`/guild-progress/${guildId}`);
+    return data;
+  },
+
+  async getGuildActivity(params: {
+    characterIds: string[];
+    types: ('quests' | 'dungeons' | 'achievements')[];
+    beneficialToAll: boolean;
+    count: number;
+    allDungeonIds?: number[];
+  }): Promise<GuildActivityResult> {
+    const { data } = await api.post<GuildActivityResult>('/guild-activity', params);
     return data;
   },
 

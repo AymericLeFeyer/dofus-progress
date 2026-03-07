@@ -79,18 +79,18 @@ export function MemberList({ members, leaderId, canManage, onRemove, onMemberCli
                       </Text>
                       <Text style={{ fontSize: 12, color: '#52c41a' }}>
                         <CheckCircleOutlined style={{ marginRight: 3 }} />
-                        {progress.completedQuestIds.length} terminées
+                        {progress.completedQuestCount} terminées
                       </Text>
-                      {progress.startedQuestIds.length > 0 && (
+                      {progress.startedQuestCount > 0 && (
                         <Text style={{ fontSize: 12, color: '#1677ff' }}>
                           <ClockCircleOutlined style={{ marginRight: 3 }} />
-                          {progress.startedQuestIds.length} en cours
+                          {progress.startedQuestCount} en cours
                         </Text>
                       )}
-                      {(progress.blockedQuestIds ?? []).length > 0 && (
+                      {progress.blockedQuestCount > 0 && (
                         <Text style={{ fontSize: 12, color: '#ff4d4f' }}>
                           <StopOutlined style={{ marginRight: 3 }} />
-                          {(progress.blockedQuestIds ?? []).length} bloquée{(progress.blockedQuestIds ?? []).length > 1 ? 's' : ''}
+                          {progress.blockedQuestCount} bloquée{progress.blockedQuestCount > 1 ? 's' : ''}
                         </Text>
                       )}
                     </Space>

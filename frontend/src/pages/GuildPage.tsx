@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, Button, Typography, Space, Avatar, Tag, Empty, Spin, message, Tooltip, Table, Input, List, Tabs, Drawer, Divider, Skeleton, Steps } from 'antd';
 import type { ColumnsType, FilterDropdownProps } from 'antd/es/table/interface';
 import {
@@ -87,13 +87,6 @@ export function GuildPage() {
   useEffect(() => {
     if (guildId) fetchGuild(guildId);
   }, [guildId, fetchGuild]);
-
-  const refreshMemberProgress = useCallback(async (): Promise<GuildMemberProgress[]> => {
-    if (!guildId) return [];
-    const { members: progressMembers } = await progressService.getGuildProgress(guildId);
-    setGuildProgress(progressMembers);
-    return progressMembers;
-  }, [guildId]);
 
   useEffect(() => {
     if (!guildId) return;
@@ -604,7 +597,6 @@ export function GuildPage() {
                         guildProgress={guildProgress}
                         dungeonMap={dungeonMap}
                         catNames={catNames}
-                        onRefreshProgress={refreshMemberProgress}
                       />
                     ),
                   },
