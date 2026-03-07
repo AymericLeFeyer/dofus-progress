@@ -84,14 +84,22 @@ async function batchUpsert<T>(
 
 // ── Sync functions ────────────────────────────────────────────────────────────
 
+// Catégories exclues : leurs sous-catégories et succès ne sont pas syncés
+const EXCLUDED_PARENT_IDS = [103, 197];
+
 async function syncAchievementCategories() {
   console.log('\n📁 Catégories de succès...');
   const cats = await fetchAll<any>('/achievement-categories', { '$sort[order]': 1 });
 
+  // Exclure les catégories dont le parentId est dans la liste noire
+  const filtered = cats.filter((c: any) => !EXCLUDED_PARENT_IDS.includes(c.parentId));
+  const skippedCats = cats.length - filtered.length;
+  if (skippedCats > 0) console.log(`  ⚠️  ${skippedCats} catégories exclues (parent_id dans liste noire)`);
+
   // Roots first (parentId=0), then children, to satisfy potential FK constraints
   const sorted = [
-    ...cats.filter((c: any) => c.parentId === 0),
-    ...cats.filter((c: any) => c.parentId !== 0),
+    ...filtered.filter((c: any) => c.parentId === 0),
+    ...filtered.filter((c: any) => c.parentId !== 0),
   ];
 
   await batchUpsert('  upsert', sorted, (cat) =>
@@ -117,8 +125,8 @@ async function syncAchievementCategories() {
     }),
   );
 
-  console.log(`  ✅ ${cats.length} catégories`);
-  return cats.length;
+  console.log(`  ✅ ${filtered.length} catégories${skippedCats > 0 ? ` (${skippedCats} exclues)` : ''}`);
+  return filtered.length;
 }
 
 async function syncAchievements() {
@@ -126,12 +134,13 @@ async function syncAchievements() {
   const achievements = await fetchAll<any>('/achievements', { '$sort[id]': 1 });
 
   // Filter out achievements whose categoryId doesn't exist in DB
+  // (inclut automatiquement les catégories exclues puisqu'elles ne sont pas upsertées)
   const validCatIds = new Set(
     (await prisma.achievementCategory.findMany({ select: { id: true } })).map((c) => c.id),
   );
   const valid = achievements.filter((a: any) => validCatIds.has(a.categoryId));
   const skipped = achievements.length - valid.length;
-  if (skipped > 0) console.log(`  ⚠️  ${skipped} succès ignorés (catégorie inconnue)`);
+  if (skipped > 0) console.log(`  ⚠️  ${skipped} succès ignorés (catégorie exclue ou inconnue)`);
 
   await batchUpsert('  upsert', valid, (ach) =>
     prisma.achievement.upsert({
@@ -249,6 +258,22 @@ async function main() {
   const start = Date.now();
 
   try {
+    // Nettoyage des données exclues (idempotent)
+    console.log('\n🧹 Nettoyage des catégories exclues...');
+    const deletedAch = await prisma.achievement.deleteMany({
+      where: {
+        category: { parentId: { in: EXCLUDED_PARENT_IDS } },
+      },
+    });
+    const deletedCats = await prisma.achievementCategory.deleteMany({
+      where: { parentId: { in: EXCLUDED_PARENT_IDS } },
+    });
+    if (deletedAch.count > 0 || deletedCats.count > 0) {
+      console.log(`  🗑️  ${deletedAch.count} succès supprimés, ${deletedCats.count} catégories supprimées`);
+    } else {
+      console.log('  ✅ Rien à nettoyer');
+    }
+
     const catCount = await syncAchievementCategories();
     const achCount = await syncAchievements();
     const qCatCount = await syncQuestCategories();
