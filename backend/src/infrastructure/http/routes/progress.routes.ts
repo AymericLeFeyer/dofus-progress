@@ -101,6 +101,7 @@ async function buildGuildMemberSummary(characterId: string) {
     achievementCount: achievementIds.length,
     completedQuestCount: questRows.filter((r) => r.status === 'completed').length,
     startedQuestCount: questRows.filter((r) => r.status === 'started').length,
+    startedQuestIds: questRows.filter((r) => r.status === 'started').map((r) => r.questId),
     blockedQuestCount: blockedQuestIds.length,
     blockedQuestIds,
     todoDungeonIds: dungeonRows.filter((r) => r.isTodo).map((r) => r.dungeonId),

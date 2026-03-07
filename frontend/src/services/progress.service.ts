@@ -28,6 +28,7 @@ export interface GuildMemberProgress {
   achievementCount: number;
   completedQuestCount: number;
   startedQuestCount: number;
+  startedQuestIds: number[];
   blockedQuestCount: number;
   blockedQuestIds: number[];
   todoDungeonIds: number[];
