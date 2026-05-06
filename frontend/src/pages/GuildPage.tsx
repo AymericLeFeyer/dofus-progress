@@ -377,7 +377,7 @@ export function GuildPage() {
       {
         title: 'Membres',
         key: 'members',
-        width: 160,
+        width: 130,
         defaultSortOrder: 'descend',
         sorter: (a, b) => a.memberCount - b.memberCount,
         filters: allMembersInTab.map((m) => ({
@@ -392,22 +392,36 @@ export function GuildPage() {
         onFilter: (value, record) => record.memberCharacters.some((m) => m.characterId === value),
         render: (_, r) => (
           <Space size={4}>
-            {r.memberCharacters.map((m) => {
-              const memberProgress = guildProgress.find((p) => p.characterId === m.characterId);
-              const memberComment = memberProgress?.questComments?.[r.questId];
-              return (
-                <Tooltip key={m.characterId} title={memberComment ? `${m.name}: ${memberComment}` : m.name}>
-                  <span style={{ position: 'relative', display: 'inline-block' }}>
-                    <ClassAvatar className={m.class} size={22} />
-                    {memberComment && (
-                      <span style={{ position: 'absolute', top: -3, right: -3, width: 8, height: 8, borderRadius: '50%', background: '#c0902b', border: '1px solid #fff' }} />
-                    )}
-                  </span>
-                </Tooltip>
-              );
-            })}
+            {r.memberCharacters.map((m) => (
+              <Tooltip key={m.characterId} title={m.name}>
+                <ClassAvatar className={m.class} size={22} />
+              </Tooltip>
+            ))}
           </Space>
         ),
+      },
+      {
+        title: 'Commentaires',
+        key: 'comments',
+        render: (_, r) => {
+          const comments = r.memberCharacters
+            .map((m) => {
+              const mp = guildProgress.find((p) => p.characterId === m.characterId);
+              const c = mp?.questComments?.[r.questId];
+              return c ? { name: m.name, comment: c } : null;
+            })
+            .filter(Boolean) as { name: string; comment: string }[];
+          if (comments.length === 0) return <Text type="secondary">—</Text>;
+          return (
+            <Space direction="vertical" size={2}>
+              {comments.map(({ name, comment }) => (
+                <Text key={name} style={{ fontSize: 12 }}>
+                  <Text strong style={{ fontSize: 12 }}>{name} :</Text> {comment}
+                </Text>
+              ))}
+            </Space>
+          );
+        },
       },
     ];
   }
@@ -479,22 +493,36 @@ export function GuildPage() {
       onFilter: (value, record) => record.memberCharacters.some((m) => m.characterId === value),
       render: (_, r) => (
         <Space size={4}>
-          {r.memberCharacters.map((m) => {
-            const memberProgress = guildProgress.find((p) => p.characterId === m.characterId);
-            const memberComment = memberProgress?.dungeonComments?.[r.dungeonId];
-            return (
-              <Tooltip key={m.characterId} title={memberComment ? `${m.name}: ${memberComment}` : m.name}>
-                <span style={{ position: 'relative', display: 'inline-block' }}>
-                  <ClassAvatar className={m.class} size={22} />
-                  {memberComment && (
-                    <span style={{ position: 'absolute', top: -3, right: -3, width: 8, height: 8, borderRadius: '50%', background: '#c0902b', border: '1px solid #fff' }} />
-                  )}
-                </span>
-              </Tooltip>
-            );
-          })}
+          {r.memberCharacters.map((m) => (
+            <Tooltip key={m.characterId} title={m.name}>
+              <ClassAvatar className={m.class} size={22} />
+            </Tooltip>
+          ))}
         </Space>
       ),
+    },
+    {
+      title: 'Commentaires',
+      key: 'comments',
+      render: (_, r) => {
+        const comments = r.memberCharacters
+          .map((m) => {
+            const mp = guildProgress.find((p) => p.characterId === m.characterId);
+            const c = mp?.dungeonComments?.[r.dungeonId];
+            return c ? { name: m.name, comment: c } : null;
+          })
+          .filter(Boolean) as { name: string; comment: string }[];
+        if (comments.length === 0) return <Text type="secondary">—</Text>;
+        return (
+          <Space direction="vertical" size={2}>
+            {comments.map(({ name, comment }) => (
+              <Text key={name} style={{ fontSize: 12 }}>
+                <Text strong style={{ fontSize: 12 }}>{name} :</Text> {comment}
+              </Text>
+            ))}
+          </Space>
+        );
+      },
     },
   ];
 
