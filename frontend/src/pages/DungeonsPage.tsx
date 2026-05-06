@@ -14,6 +14,8 @@ import {
   Radio,
   Button,
   Switch,
+  Popover,
+  Badge,
 } from 'antd';
 import {
   SearchOutlined,
@@ -22,6 +24,7 @@ import {
   CheckCircleOutlined,
   EyeInvisibleOutlined,
   EyeOutlined,
+  CommentOutlined,
 } from '@ant-design/icons';
 import type { Dungeon } from '../types/dofusdb';
 import { dofusdbService } from '../services/dofusdb.service';
@@ -56,7 +59,7 @@ export function DungeonsPage() {
   const [hideDone, setHideDone] = useState(false);
 
   const { selectedCharacterId } = useCharacterStore();
-  const { todoDungeonIds, doneDungeonIds, setDungeonStatus } = useProgressStore();
+  const { todoDungeonIds, doneDungeonIds, dungeonComments, setDungeonStatus } = useProgressStore();
 
   useEffect(() => {
     dofusdbService.getAllDungeons().then((data) => {
@@ -152,8 +155,10 @@ export function DungeonsPage() {
                     characterId={selectedCharacterId}
                     isTodo={todoDungeonIds.has(dungeon.id)}
                     isDone={doneDungeonIds.has(dungeon.id)}
+                    comment={dungeonComments[dungeon.id]}
                     onToggleTodo={() => selectedCharacterId && setDungeonStatus(selectedCharacterId, dungeon.id, { isTodo: !todoDungeonIds.has(dungeon.id) })}
                     onToggleDone={() => selectedCharacterId && setDungeonStatus(selectedCharacterId, dungeon.id, { isDone: !doneDungeonIds.has(dungeon.id) })}
+                    onSaveComment={(c) => selectedCharacterId && setDungeonStatus(selectedCharacterId, dungeon.id, { isTodo: todoDungeonIds.has(dungeon.id), isDone: doneDungeonIds.has(dungeon.id), comment: c })}
                   />
                 </Col>
               ))}
@@ -170,16 +175,22 @@ function DungeonCard({
   characterId,
   isTodo,
   isDone,
+  comment,
   onToggleTodo,
   onToggleDone,
+  onSaveComment,
 }: {
   dungeon: Dungeon;
   characterId: string | null;
   isTodo: boolean;
   isDone: boolean;
+  comment?: string;
   onToggleTodo: () => void;
   onToggleDone: () => void;
+  onSaveComment: (comment: string) => void;
 }) {
+  const [commentOpen, setCommentOpen] = useState(false);
+  const [draftComment, setDraftComment] = useState(comment ?? '');
   const topColor = statusBorderColor(characterId, isTodo, isDone);
   const levelColor = levelTagColor(dungeon.level);
 
@@ -237,6 +248,41 @@ function DungeonCard({
                   style={isTodo ? { background: '#ff4d4f', borderColor: '#ff4d4f' } : {}}
                 />
               </Tooltip>
+              {isTodo && (
+                <Popover
+                  open={commentOpen}
+                  onOpenChange={(open) => {
+                    if (open) setDraftComment(comment ?? '');
+                    setCommentOpen(open);
+                  }}
+                  trigger="click"
+                  title="Commentaire"
+                  content={
+                    <div style={{ width: 260 }}>
+                      <Input.TextArea
+                        value={draftComment}
+                        onChange={(e) => setDraftComment(e.target.value)}
+                        placeholder="Ajouter un commentaire..."
+                        autoSize={{ minRows: 2, maxRows: 5 }}
+                        style={{ marginBottom: 8 }}
+                      />
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                        <Button size="small" onClick={() => setCommentOpen(false)}>Annuler</Button>
+                        <Button size="small" type="primary" onClick={() => { onSaveComment(draftComment); setCommentOpen(false); }} style={{ background: '#c0902b', borderColor: '#c0902b' }}>OK</Button>
+                      </div>
+                    </div>
+                  }
+                >
+                  <Badge dot={!!comment} color="#c0902b" offset={[-2, 2]}>
+                    <Button
+                      size="small"
+                      type="text"
+                      icon={<CommentOutlined />}
+                      style={{ color: comment ? '#c0902b' : '#d9d9d9' }}
+                    />
+                  </Badge>
+                </Popover>
+              )}
               <Tooltip title={isDone ? 'Marquer comme non fait' : 'Marquer comme fait'}>
                 <Button
                   size="small"

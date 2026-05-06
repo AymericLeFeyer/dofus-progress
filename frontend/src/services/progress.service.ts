@@ -15,6 +15,8 @@ export interface CharacterProgress {
   blockedQuestCategoryProgress: Record<number, number>;
   todoDungeonIds: number[];
   doneDungeonIds: number[];
+  questComments: Record<number, string>;
+  dungeonComments: Record<number, string>;
 }
 
 // Résumé allégé retourné par guild-progress (pas les listes complètes de complétions)
@@ -32,6 +34,8 @@ export interface GuildMemberProgress {
   blockedQuestCount: number;
   blockedQuestIds: number[];
   todoDungeonIds: number[];
+  questComments: Record<number, string>;
+  dungeonComments: Record<number, string>;
 }
 
 // Types pour guild-activity
@@ -108,10 +112,10 @@ export const progressService = {
     return data;
   },
 
-  async setQuestStatus(characterId: string, questId: number, status: QuestStatus): Promise<{ status: QuestStatus }> {
+  async setQuestStatus(characterId: string, questId: number, status: QuestStatus, comment?: string): Promise<{ status: QuestStatus }> {
     const { data } = await api.put<{ status: QuestStatus }>(
       `/progress/${characterId}/quest/${questId}`,
-      { status },
+      { status, ...(comment !== undefined ? { comment } : {}) },
     );
     return data;
   },
@@ -140,7 +144,7 @@ export const progressService = {
   async setDungeonStatus(
     characterId: string,
     dungeonId: number,
-    flags: { isTodo?: boolean; isDone?: boolean },
+    flags: { isTodo?: boolean; isDone?: boolean; comment?: string },
   ): Promise<{ isTodo: boolean; isDone: boolean }> {
     const { data } = await api.put<{ isTodo: boolean; isDone: boolean }>(
       `/progress/${characterId}/dungeon/${dungeonId}`,

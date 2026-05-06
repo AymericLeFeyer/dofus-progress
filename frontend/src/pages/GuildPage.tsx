@@ -392,11 +392,20 @@ export function GuildPage() {
         onFilter: (value, record) => record.memberCharacters.some((m) => m.characterId === value),
         render: (_, r) => (
           <Space size={4}>
-            {r.memberCharacters.map((m) => (
-              <Tooltip key={m.characterId} title={m.name}>
-                <span><ClassAvatar className={m.class} size={22} /></span>
-              </Tooltip>
-            ))}
+            {r.memberCharacters.map((m) => {
+              const memberProgress = guildProgress.find((p) => p.characterId === m.characterId);
+              const memberComment = memberProgress?.questComments?.[r.questId];
+              return (
+                <Tooltip key={m.characterId} title={memberComment ? `${m.name}: ${memberComment}` : m.name}>
+                  <span style={{ position: 'relative', display: 'inline-block' }}>
+                    <ClassAvatar className={m.class} size={22} />
+                    {memberComment && (
+                      <span style={{ position: 'absolute', top: -3, right: -3, width: 8, height: 8, borderRadius: '50%', background: '#c0902b', border: '1px solid #fff' }} />
+                    )}
+                  </span>
+                </Tooltip>
+              );
+            })}
           </Space>
         ),
       },
@@ -470,11 +479,20 @@ export function GuildPage() {
       onFilter: (value, record) => record.memberCharacters.some((m) => m.characterId === value),
       render: (_, r) => (
         <Space size={4}>
-          {r.memberCharacters.map((m) => (
-            <Tooltip key={m.characterId} title={m.name}>
-              <span><ClassAvatar className={m.class} size={22} /></span>
-            </Tooltip>
-          ))}
+          {r.memberCharacters.map((m) => {
+            const memberProgress = guildProgress.find((p) => p.characterId === m.characterId);
+            const memberComment = memberProgress?.dungeonComments?.[r.dungeonId];
+            return (
+              <Tooltip key={m.characterId} title={memberComment ? `${m.name}: ${memberComment}` : m.name}>
+                <span style={{ position: 'relative', display: 'inline-block' }}>
+                  <ClassAvatar className={m.class} size={22} />
+                  {memberComment && (
+                    <span style={{ position: 'absolute', top: -3, right: -3, width: 8, height: 8, borderRadius: '50%', background: '#c0902b', border: '1px solid #fff' }} />
+                  )}
+                </span>
+              </Tooltip>
+            );
+          })}
         </Space>
       ),
     },

@@ -19,6 +19,8 @@ import {
   Select,
   Switch,
   Pagination,
+  Popover,
+  Badge,
   theme,
 } from 'antd';
 import {
@@ -33,6 +35,7 @@ import {
   CheckSquareOutlined,
   CheckOutlined,
   EyeInvisibleOutlined,
+  CommentOutlined,
 } from '@ant-design/icons';
 import type { QuestCategory, Quest, QuestStep } from '../types/dofusdb';
 import { dofusdbService, levelRange } from '../services/dofusdb.service';
@@ -76,6 +79,7 @@ export function QuestsPage() {
     startedQuestCategoryProgress,
     blockedQuestCategoryProgress,
     questCategoryProgress,
+    questComments,
     setQuestStatus,
     completeAllQuests,
   } = useProgressStore();
@@ -136,9 +140,9 @@ export function QuestsPage() {
     }
   };
 
-  const handleSetStatus = async (questId: number, status: QuestStatus) => {
+  const handleSetStatus = async (questId: number, status: QuestStatus, comment?: string) => {
     if (!selectedCharacterId) return;
-    await setQuestStatus(selectedCharacterId, questId, status);
+    await setQuestStatus(selectedCharacterId, questId, status, comment);
   };
 
   const handleCompleteAll = async () => {
@@ -453,8 +457,9 @@ export function QuestsPage() {
                         quest={quest}
                         status={status}
                         canToggle={!!selectedCharacterId}
+                        comment={questComments[quest.id]}
                         onClick={() => openQuestDetail(quest)}
-                        onSetStatus={(s) => handleSetStatus(quest.id, s)}
+                        onSetStatus={(s, c) => handleSetStatus(quest.id, s, c)}
                       />
                     );
                   }}
@@ -579,14 +584,16 @@ function QuestListItem({
   quest,
   status,
   canToggle,
+  comment,
   onClick,
   onSetStatus,
 }: {
   quest: Quest;
   status: QuestStatus;
   canToggle: boolean;
+  comment?: string;
   onClick: () => void;
-  onSetStatus: (status: QuestStatus) => void;
+  onSetStatus: (status: QuestStatus, comment?: string) => void;
 }) {
   const { token } = theme.useToken();
   const cfg = STATUS_CONFIG[status];
@@ -595,6 +602,17 @@ function QuestListItem({
     status === 'started'   ? token.colorInfoBg :
     status === 'blocked'   ? token.colorErrorBg :
     'transparent';
+
+  const [commentPopoverOpen, setCommentPopoverOpen] = useState(false);
+  const [draftComment, setDraftComment] = useState(comment ?? '');
+
+  const showCommentIcon = canToggle && (status === 'started' || status === 'blocked');
+
+  const handleCommentSave = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onSetStatus(status, draftComment || undefined);
+    setCommentPopoverOpen(false);
+  };
 
   return (
     <List.Item
@@ -637,6 +655,42 @@ function QuestListItem({
               onClick={(e) => { e.stopPropagation(); onSetStatus(status === 'completed' ? 'todo' : 'completed'); }}
             />
           </Tooltip>
+        )}
+        {showCommentIcon && (
+          <Popover
+            open={commentPopoverOpen}
+            onOpenChange={(open) => {
+              if (open) setDraftComment(comment ?? '');
+              setCommentPopoverOpen(open);
+            }}
+            trigger="click"
+            title="Commentaire"
+            content={
+              <div style={{ width: 260 }} onClick={(e) => e.stopPropagation()}>
+                <Input.TextArea
+                  value={draftComment}
+                  onChange={(e) => setDraftComment(e.target.value)}
+                  placeholder="Ajouter un commentaire..."
+                  autoSize={{ minRows: 2, maxRows: 5 }}
+                  style={{ marginBottom: 8 }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                  <Button size="small" onClick={(e) => { e.stopPropagation(); setCommentPopoverOpen(false); }}>Annuler</Button>
+                  <Button size="small" type="primary" onClick={handleCommentSave} style={{ background: '#c0902b', borderColor: '#c0902b' }}>OK</Button>
+                </div>
+              </div>
+            }
+          >
+            <Badge dot={!!comment} color="#c0902b" offset={[-2, 2]}>
+              <Button
+                size="small"
+                type="text"
+                icon={<CommentOutlined />}
+                style={{ color: comment ? '#c0902b' : '#d9d9d9', flexShrink: 0 }}
+                onClick={(e) => e.stopPropagation()}
+              />
+            </Badge>
+          </Popover>
         )}
 
         <div style={{ flex: 1, minWidth: 0 }}>

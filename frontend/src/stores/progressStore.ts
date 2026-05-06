@@ -15,17 +15,19 @@ interface ProgressStore {
   blockedQuestCategoryProgress: Record<number, number>;
   // Compat alias
   questCategoryProgress: Record<number, number>;
+  questComments: Record<number, string>;
+  dungeonComments: Record<number, string>;
   pointsByCharacter: Record<string, number>;
   isLoading: boolean;
 
   fetchProgress: (characterId: string) => Promise<void>;
   fetchAllCharactersPoints: () => Promise<void>;
   toggleQuest: (characterId: string, questId: number) => Promise<void>;
-  setQuestStatus: (characterId: string, questId: number, status: QuestStatus) => Promise<void>;
+  setQuestStatus: (characterId: string, questId: number, status: QuestStatus, comment?: string) => Promise<void>;
   toggleAchievement: (characterId: string, achievementId: number) => Promise<void>;
   completeAllAchievements: (characterId: string, categoryId: number) => Promise<void>;
   completeAllQuests: (characterId: string, categoryId: number) => Promise<void>;
-  setDungeonStatus: (characterId: string, dungeonId: number, flags: { isTodo?: boolean; isDone?: boolean }) => Promise<void>;
+  setDungeonStatus: (characterId: string, dungeonId: number, flags: { isTodo?: boolean; isDone?: boolean; comment?: string }) => Promise<void>;
   reset: () => void;
 }
 
@@ -42,6 +44,8 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
   startedQuestCategoryProgress: {},
   blockedQuestCategoryProgress: {},
   questCategoryProgress: {},
+  questComments: {},
+  dungeonComments: {},
   pointsByCharacter: {},
   isLoading: false,
 
@@ -62,6 +66,8 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
         startedQuestCategoryProgress: data.startedQuestCategoryProgress,
         blockedQuestCategoryProgress: data.blockedQuestCategoryProgress ?? {},
         questCategoryProgress: data.completedQuestCategoryProgress,
+        questComments: data.questComments ?? {},
+        dungeonComments: data.dungeonComments ?? {},
         isLoading: false,
       });
     } catch {
@@ -102,8 +108,8 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
     await get().fetchProgress(characterId);
   },
 
-  setQuestStatus: async (characterId, questId, status) => {
-    await progressService.setQuestStatus(characterId, questId, status);
+  setQuestStatus: async (characterId, questId, status, comment?) => {
+    await progressService.setQuestStatus(characterId, questId, status, comment);
     await get().fetchProgress(characterId);
   },
 
@@ -134,7 +140,7 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
     await get().fetchProgress(characterId);
   },
 
-  setDungeonStatus: async (characterId, dungeonId, flags) => {
+  setDungeonStatus: async (characterId, dungeonId, flags: { isTodo?: boolean; isDone?: boolean; comment?: string }) => {
     const result = await progressService.setDungeonStatus(characterId, dungeonId, flags);
     set((state) => {
       const nextTodo = new Set(state.todoDungeonIds);
@@ -161,6 +167,8 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
       startedQuestCategoryProgress: {},
       blockedQuestCategoryProgress: {},
       questCategoryProgress: {},
+      questComments: {},
+      dungeonComments: {},
     });
   },
 }));

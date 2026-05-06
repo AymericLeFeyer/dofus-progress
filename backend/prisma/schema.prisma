@@ -141,6 +141,7 @@ model CharacterQuestProgress {
   characterId String   @map("character_id")
   questId     Int      @map("quest_id")
   status      String   @default("completed") // "started" | "completed" | "blocked"
+  comment     String?
   updatedAt   DateTime @default(now()) @map("updated_at")
 
   @@id([characterId, questId])
@@ -161,6 +162,7 @@ model CharacterDungeonProgress {
   dungeonId   Int      @map("dungeon_id")
   isTodo      Boolean  @default(false) @map("is_todo")
   isDone      Boolean  @default(false) @map("is_done")
+  comment     String?
   updatedAt   DateTime @default(now()) @map("updated_at")
 
   @@id([characterId, dungeonId])

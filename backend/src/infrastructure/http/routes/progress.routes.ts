@@ -7,14 +7,16 @@ import { authenticate } from '../middleware/authenticate';
 
 async function buildProgressForCharacter(characterId: string) {
   const [questRows, achRows, dungeonRows] = await Promise.all([
-    prisma.characterQuestProgress.findMany({ where: { characterId }, select: { questId: true, status: true } }),
+    prisma.characterQuestProgress.findMany({ where: { characterId }, select: { questId: true, status: true, comment: true } }),
     prisma.characterAchievementProgress.findMany({ where: { characterId }, select: { achievementId: true } }),
-    prisma.characterDungeonProgress.findMany({ where: { characterId }, select: { dungeonId: true, isTodo: true, isDone: true } }),
+    prisma.characterDungeonProgress.findMany({ where: { characterId }, select: { dungeonId: true, isTodo: true, isDone: true, comment: true } }),
   ]);
 
   const completedQuestIds = questRows.filter((r) => r.status === 'completed').map((r) => r.questId);
   const startedQuestIds = questRows.filter((r) => r.status === 'started').map((r) => r.questId);
   const blockedQuestIds = questRows.filter((r) => r.status === 'blocked').map((r) => r.questId);
+  const questComments: Record<number, string> = {};
+  questRows.forEach((r) => { if (r.comment) questComments[r.questId] = r.comment; });
   const completedAchievementIds = achRows.map((r) => r.achievementId);
 
   const [achWithCats, completedQuestWithCats, startedQuestWithCats, blockedQuestWithCats] = await Promise.all([
@@ -59,6 +61,8 @@ async function buildProgressForCharacter(characterId: string) {
 
   const todoDungeonIds = dungeonRows.filter((r) => r.isTodo).map((r) => r.dungeonId);
   const doneDungeonIds = dungeonRows.filter((r) => r.isDone).map((r) => r.dungeonId);
+  const dungeonComments: Record<number, string> = {};
+  dungeonRows.forEach((r) => { if (r.comment) dungeonComments[r.dungeonId] = r.comment; });
 
   return {
     completedQuestIds,
@@ -73,15 +77,17 @@ async function buildProgressForCharacter(characterId: string) {
     blockedQuestCategoryProgress,
     todoDungeonIds,
     doneDungeonIds,
+    questComments,
+    dungeonComments,
   };
 }
 
 // Summary allégé pour guild-progress (pas les listes complètes de complétions)
 async function buildGuildMemberSummary(characterId: string) {
   const [questRows, achRows, dungeonRows] = await Promise.all([
-    prisma.characterQuestProgress.findMany({ where: { characterId }, select: { questId: true, status: true } }),
+    prisma.characterQuestProgress.findMany({ where: { characterId }, select: { questId: true, status: true, comment: true } }),
     prisma.characterAchievementProgress.findMany({ where: { characterId }, select: { achievementId: true } }),
-    prisma.characterDungeonProgress.findMany({ where: { characterId }, select: { dungeonId: true, isTodo: true } }),
+    prisma.characterDungeonProgress.findMany({ where: { characterId }, select: { dungeonId: true, isTodo: true, comment: true } }),
   ]);
 
   const blockedQuestIds = questRows.filter((r) => r.status === 'blocked').map((r) => r.questId);
@@ -96,6 +102,12 @@ async function buildGuildMemberSummary(characterId: string) {
     totalPoints = achs.reduce((sum, a) => sum + a.points, 0);
   }
 
+  const questComments: Record<number, string> = {};
+  questRows.forEach((r) => { if (r.comment) questComments[r.questId] = r.comment; });
+
+  const dungeonComments: Record<number, string> = {};
+  dungeonRows.forEach((r) => { if (r.comment) dungeonComments[r.dungeonId] = r.comment; });
+
   return {
     totalPoints,
     achievementCount: achievementIds.length,
@@ -105,6 +117,8 @@ async function buildGuildMemberSummary(characterId: string) {
     blockedQuestCount: blockedQuestIds.length,
     blockedQuestIds,
     todoDungeonIds: dungeonRows.filter((r) => r.isTodo).map((r) => r.dungeonId),
+    questComments,
+    dungeonComments,
   };
 }
 
@@ -415,12 +429,12 @@ export async function progressRoutes(fastify: FastifyInstance) {
   );
 
   // PUT /api/progress/:characterId/quest/:questId → set status direct
-  fastify.put<{ Params: { characterId: string; questId: string }; Body: { status: string } }>(
+  fastify.put<{ Params: { characterId: string; questId: string }; Body: { status: string; comment?: string } }>(
     '/progress/:characterId/quest/:questId',
     { onRequest: [authenticate] },
     async (request, reply) => {
       const { characterId, questId } = request.params;
-      const { status } = request.body;
+      const { status, comment } = request.body;
       const { userId } = request.user as { userId: string };
 
       const allowed = ['started', 'completed', 'blocked', 'todo'];
@@ -436,8 +450,8 @@ export async function progressRoutes(fastify: FastifyInstance) {
       } else {
         await prisma.characterQuestProgress.upsert({
           where: { characterId_questId: { characterId, questId: Number(questId) } },
-          create: { characterId, questId: Number(questId), status },
-          update: { status },
+          create: { characterId, questId: Number(questId), status, comment: comment ?? null },
+          update: { status, ...(comment !== undefined ? { comment: comment || null } : {}) },
         });
       }
       return { status };
@@ -524,12 +538,12 @@ export async function progressRoutes(fastify: FastifyInstance) {
   );
 
   // PUT /api/progress/:characterId/dungeon/:dungeonId → set isTodo / isDone
-  fastify.put<{ Params: { characterId: string; dungeonId: string }; Body: { isTodo?: boolean; isDone?: boolean } }>(
+  fastify.put<{ Params: { characterId: string; dungeonId: string }; Body: { isTodo?: boolean; isDone?: boolean; comment?: string } }>(
     '/progress/:characterId/dungeon/:dungeonId',
     { onRequest: [authenticate] },
     async (request, reply) => {
       const { characterId, dungeonId } = request.params;
-      const { isTodo, isDone } = request.body;
+      const { isTodo, isDone, comment } = request.body;
       const { userId } = request.user as { userId: string };
       const character = await prisma.character.findFirst({ where: { id: characterId, userId } });
       if (!character) return reply.status(404).send({ error: 'Personnage introuvable' });
@@ -545,8 +559,8 @@ export async function progressRoutes(fastify: FastifyInstance) {
       } else {
         await prisma.characterDungeonProgress.upsert({
           where: { characterId_dungeonId: { characterId, dungeonId: Number(dungeonId) } },
-          create: { characterId, dungeonId: Number(dungeonId), isTodo: newIsTodo, isDone: newIsDone },
-          update: { isTodo: newIsTodo, isDone: newIsDone },
+          create: { characterId, dungeonId: Number(dungeonId), isTodo: newIsTodo, isDone: newIsDone, comment: comment ?? null },
+          update: { isTodo: newIsTodo, isDone: newIsDone, ...(comment !== undefined ? { comment: comment || null } : {}) },
         });
       }
       return { isTodo: newIsTodo, isDone: newIsDone };
