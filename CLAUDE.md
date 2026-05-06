@@ -61,6 +61,11 @@ dofus-progress/
 - `GuildMember` — guildId + characterId (composite PK), role (leader/officer/member)
 - `GuildInvitation` — token (unique cuid), status (pending/accepted/declined), expiresAt
 
+### Progression des personnages
+- `CharacterQuestProgress` — characterId + questId (PK), status (started/completed/blocked), **comment String?**
+- `CharacterAchievementProgress` — characterId + achievementId (PK)
+- `CharacterDungeonProgress` — characterId + dungeonId (PK), isTodo, isDone, **comment String?**
+
 ### Encyclopédie (données DofusDB, remplies par le script sync)
 - `AchievementCategory` — id (int), parentId, nameFr, nameEn, color, icon, order
 - `Achievement` — id (int), categoryId, points, level, nameFr, descriptionFr, img
@@ -103,6 +108,12 @@ GET    /api/achievements?categoryId&skip&limit&search
 GET    /api/quests/categories
 GET    /api/quests?categoryId&skip&limit&search
 GET    /api/encyclopedia/status
+
+GET    /api/progress/:characterId                          (retourne questComments, dungeonComments)
+PUT    /api/progress/:characterId/quest/:questId           (body: { status, comment? })
+PUT    /api/progress/:characterId/dungeon/:dungeonId       (body: { isTodo?, isDone?, comment? })
+GET    /api/guild-progress/:guildId                        (retourne questComments, dungeonComments par membre)
+GET    /api/profile/:characterId                           (profil public + progression complète)
 ```
 
 ## Encyclopédie DofusDB
@@ -138,9 +149,13 @@ docker-compose up
 - **Stores Zustand** : un store par domaine (auth, character, guild), pas de state global Redux-style
 - **Couleurs Ant Design** : couleur primaire `#c0902b` (doré Dofus), configurée dans `App.tsx`
 
+## Points d'attention
+
+- **Prisma generate après db push** : les types Prisma (`comment` sur QuestProgress et DungeonProgress) ne sont disponibles qu'après `docker-compose exec backend npx prisma db push` (regénère le client automatiquement via postinstall). Le backend TS ne compilera pas sans ça.
+- **CharacterCard cliquable** : dans CharactersPage, le clic sur la carte ouvre le drawer profil. Les boutons Éditer/Supprimer stopPropagation via leur positionnement dans le Card extra — pas de conflit.
+
 ## À faire (prochaines étapes)
 
-- Suivi de progression : cocher des succès/quêtes sur un personnage, visible par la guilde
 - Upload image de guilde (actuellement URL uniquement)
 - Page Almanax journalier
 - Rôles officier dans la guilde (promotion/rétrogradation)
