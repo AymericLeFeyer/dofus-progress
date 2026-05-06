@@ -657,40 +657,41 @@ function QuestListItem({
           </Tooltip>
         )}
         {showCommentIcon && (
-          <Popover
-            open={commentPopoverOpen}
-            onOpenChange={(open) => {
-              if (open) setDraftComment(comment ?? '');
-              setCommentPopoverOpen(open);
-            }}
-            trigger="click"
-            title="Commentaire"
-            content={
-              <div style={{ width: 260 }} onClick={(e) => e.stopPropagation()}>
-                <Input.TextArea
-                  value={draftComment}
-                  onChange={(e) => setDraftComment(e.target.value)}
-                  placeholder="Ajouter un commentaire..."
-                  autoSize={{ minRows: 2, maxRows: 5 }}
-                  style={{ marginBottom: 8 }}
-                />
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                  <Button size="small" onClick={(e) => { e.stopPropagation(); setCommentPopoverOpen(false); }}>Annuler</Button>
-                  <Button size="small" type="primary" onClick={handleCommentSave} style={{ background: '#c0902b', borderColor: '#c0902b' }}>OK</Button>
+          <div onClick={(e) => e.stopPropagation()}>
+            <Popover
+              open={commentPopoverOpen}
+              onOpenChange={(open) => {
+                if (open) setDraftComment(comment ?? '');
+                setCommentPopoverOpen(open);
+              }}
+              trigger="click"
+              title="Commentaire"
+              content={
+                <div style={{ width: 260 }}>
+                  <Input.TextArea
+                    value={draftComment}
+                    onChange={(e) => setDraftComment(e.target.value)}
+                    placeholder="Ajouter un commentaire..."
+                    autoSize={{ minRows: 2, maxRows: 5 }}
+                    style={{ marginBottom: 8 }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                    <Button size="small" onClick={() => setCommentPopoverOpen(false)}>Annuler</Button>
+                    <Button size="small" type="primary" onClick={handleCommentSave} style={{ background: '#c0902b', borderColor: '#c0902b' }}>OK</Button>
+                  </div>
                 </div>
-              </div>
-            }
-          >
-            <Badge dot={!!comment} color="#c0902b" offset={[-2, 2]}>
-              <Button
-                size="small"
-                type="text"
-                icon={<CommentOutlined />}
-                style={{ color: comment ? '#c0902b' : '#d9d9d9', flexShrink: 0 }}
-                onClick={(e) => e.stopPropagation()}
-              />
-            </Badge>
-          </Popover>
+              }
+            >
+              <Badge dot={!!comment} color="#c0902b" offset={[-2, 2]}>
+                <Button
+                  size="small"
+                  type="text"
+                  icon={<CommentOutlined />}
+                  style={{ color: comment ? '#c0902b' : '#8c8c8c', flexShrink: 0 }}
+                />
+              </Badge>
+            </Popover>
+          </div>
         )}
 
         <div style={{ flex: 1, minWidth: 0 }}>

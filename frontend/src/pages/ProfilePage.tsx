@@ -40,7 +40,7 @@ function QuestTypeTag({ quest }: { quest: QuestStub }) {
   return <Tag>Normale</Tag>;
 }
 
-function buildColumns(catNames: Record<number, string>, quests: QuestStub[]): ColumnsType<QuestStub> {
+function buildColumns(catNames: Record<number, string>, quests: QuestStub[], questComments: Record<number, string> = {}): ColumnsType<QuestStub> {
   const catSet = [...new Set(quests.map((q) => q.categoryId))];
   const catFilters = catSet
     .map((id) => ({ text: catNames[id] ?? `#${id}`, value: id }))
@@ -107,6 +107,14 @@ function buildColumns(catNames: Record<number, string>, quests: QuestStub[]): Co
         return !record.isDungeonQuest && !record.isPartyQuest && !record.isEvent;
       },
       render: (_, r) => <QuestTypeTag quest={r} />,
+    },
+    {
+      title: 'Commentaire',
+      key: 'comment',
+      render: (_, r) => {
+        const c = questComments[r.id];
+        return c ? <Text style={{ fontSize: 12 }}>{c}</Text> : <Text type="secondary">—</Text>;
+      },
     },
   ];
 }
@@ -178,8 +186,8 @@ export function ProfilePage() {
   }
 
   const { character } = profile;
-  const blockedCols = buildColumns(catNames, blockedQuests);
-  const startedCols = buildColumns(catNames, startedQuests);
+  const blockedCols = buildColumns(catNames, blockedQuests, profile.questComments ?? {});
+  const startedCols = buildColumns(catNames, startedQuests, profile.questComments ?? {});
 
   const dungeonMap = new Map(allDungeons.map((d) => [d.id, d]));
   const todoDungeons = (profile.todoDungeonIds ?? []).map((id) => dungeonMap.get(id)).filter(Boolean) as Dungeon[];
@@ -189,6 +197,14 @@ export function ProfilePage() {
       title: 'Donjon',
       dataIndex: ['name', 'fr'],
       sorter: (a, b) => a.name.fr.localeCompare(b.name.fr),
+    },
+    {
+      title: 'Commentaire',
+      key: 'comment',
+      render: (_, r) => {
+        const c = (profile.dungeonComments ?? {})[r.id];
+        return c ? <Text style={{ fontSize: 12 }}>{c}</Text> : <Text type="secondary">—</Text>;
+      },
     },
   ];
 
