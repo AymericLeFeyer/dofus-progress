@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, Button, Typography, Space, Avatar, Tag, Empty, Spin, message, Tooltip, Table, Input, List, Tabs, Drawer, Divider, Skeleton, Steps, Select } from 'antd';
 import type { ColumnsType, FilterDropdownProps } from 'antd/es/table/interface';
 import {
@@ -12,7 +13,6 @@ import { useGuildStore } from '../stores/guildStore';
 import { useProgressStore } from '../stores/progressStore';
 import { GuildFormModal } from '../components/guild/GuildFormModal';
 import { MemberList } from '../components/guild/MemberList';
-import { MemberProgressDrawer } from '../components/guild/MemberProgressDrawer';
 import { ClassAvatar } from '../components/character/ClassAvatar';
 import { InviteModal } from '../components/guild/InviteModal';
 import { CreateGuildData } from '../types';
@@ -66,6 +66,7 @@ const QUEST_STATUS_OPTIONS: { label: string; value: QuestStatus; color: string }
 ];
 
 export function GuildPage() {
+  const navigate = useNavigate();
   const { characters, selectedCharacterId, fetchCharacters } = useCharacterStore();
   const { guild, members, fetchGuild, createGuild, inviteCharacter, removeMember, invitations, fetchInvitations, acceptInvitation, declineInvitation } = useGuildStore();
   const {
@@ -85,9 +86,6 @@ export function GuildPage() {
   const [drawerSteps, setDrawerSteps] = useState<QuestStep[]>([]);
   const [drawerStepsLoading, setDrawerStepsLoading] = useState(false);
   const [questStatusLoading, setQuestStatusLoading] = useState(false);
-
-  // Member drawer
-  const [drawerMember, setDrawerMember] = useState<GuildMemberProgress | null>(null);
 
   // Top quests
   const [topBlocked, setTopBlocked] = useState<TopQuestEntry[]>([]);
@@ -216,8 +214,7 @@ export function GuildPage() {
   };
 
   const handleMemberClick = (characterId: string) => {
-    const member = guildProgress.find((mp) => mp.characterId === characterId) ?? null;
-    setDrawerMember(member);
+    navigate(`/profile/${characterId}`);
   };
 
   const handleAcceptInvitation = async (token: string, guildName: string) => {
@@ -781,15 +778,6 @@ export function GuildPage() {
         open={inviteModalOpen}
         onSubmit={handleInvite}
         onCancel={() => setInviteModalOpen(false)}
-      />
-
-      {/* Drawer détail membre */}
-      <MemberProgressDrawer
-        member={drawerMember}
-        open={!!drawerMember}
-        onClose={() => setDrawerMember(null)}
-        onQuestClick={openQuestDetail}
-        catNames={catNames}
       />
 
       {/* Drawer détail quête */}

@@ -5,6 +5,27 @@ import { authenticate } from '../middleware/authenticate';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
+/**
+ * Vérifie que `userId` peut éditer la progression de `characterId`.
+ * Autorisé si :
+ *  - userId possède le personnage, OU
+ *  - userId possède le personnage chef de la guilde dont characterId est membre.
+ */
+async function assertCanEditCharacter(userId: string, characterId: string) {
+  const character = await prisma.character.findUnique({
+    where: { id: characterId },
+    include: { guildMember: { include: { guild: { select: { leaderId: true } } } } },
+  });
+  if (!character) return null;
+  if (character.userId === userId) return character;
+  const leaderId = character.guildMember?.guild.leaderId;
+  if (leaderId) {
+    const leader = await prisma.character.findFirst({ where: { id: leaderId, userId } });
+    if (leader) return character;
+  }
+  return null;
+}
+
 async function buildProgressForCharacter(characterId: string) {
   const [questRows, achRows, dungeonRows] = await Promise.all([
     prisma.characterQuestProgress.findMany({ where: { characterId }, select: { questId: true, status: true, comment: true } }),
@@ -141,7 +162,7 @@ export async function progressRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const { characterId } = request.params;
       const { userId } = request.user as { userId: string };
-      const character = await prisma.character.findFirst({ where: { id: characterId, userId } });
+      const character = await assertCanEditCharacter(userId, characterId);
       if (!character) return reply.status(404).send({ error: 'Personnage introuvable' });
       return buildProgressForCharacter(characterId);
     },
@@ -399,7 +420,7 @@ export async function progressRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const { characterId, questId } = request.params;
       const { userId } = request.user as { userId: string };
-      const character = await prisma.character.findFirst({ where: { id: characterId, userId } });
+      const character = await assertCanEditCharacter(userId, characterId);
       if (!character) return reply.status(404).send({ error: 'Personnage introuvable' });
 
       const existing = await prisma.characterQuestProgress.findUnique({
@@ -440,7 +461,7 @@ export async function progressRoutes(fastify: FastifyInstance) {
       const allowed = ['started', 'completed', 'blocked', 'todo'];
       if (!allowed.includes(status)) return reply.status(400).send({ error: 'Statut invalide' });
 
-      const character = await prisma.character.findFirst({ where: { id: characterId, userId } });
+      const character = await assertCanEditCharacter(userId, characterId);
       if (!character) return reply.status(404).send({ error: 'Personnage introuvable' });
 
       if (status === 'todo') {
@@ -465,7 +486,7 @@ export async function progressRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const { characterId, achievementId } = request.params;
       const { userId } = request.user as { userId: string };
-      const character = await prisma.character.findFirst({ where: { id: characterId, userId } });
+      const character = await assertCanEditCharacter(userId, characterId);
       if (!character) return reply.status(404).send({ error: 'Personnage introuvable' });
 
       const existing = await prisma.characterAchievementProgress.findUnique({
@@ -507,7 +528,7 @@ export async function progressRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const { characterId, categoryId } = request.params;
       const { userId } = request.user as { userId: string };
-      const character = await prisma.character.findFirst({ where: { id: characterId, userId } });
+      const character = await assertCanEditCharacter(userId, characterId);
       if (!character) return reply.status(404).send({ error: 'Personnage introuvable' });
 
       const achievements = await prisma.achievement.findMany({
@@ -545,7 +566,7 @@ export async function progressRoutes(fastify: FastifyInstance) {
       const { characterId, dungeonId } = request.params;
       const { isTodo, isDone, comment } = request.body;
       const { userId } = request.user as { userId: string };
-      const character = await prisma.character.findFirst({ where: { id: characterId, userId } });
+      const character = await assertCanEditCharacter(userId, characterId);
       if (!character) return reply.status(404).send({ error: 'Personnage introuvable' });
 
       const existing = await prisma.characterDungeonProgress.findUnique({
@@ -574,7 +595,7 @@ export async function progressRoutes(fastify: FastifyInstance) {
     async (request, reply) => {
       const { characterId, categoryId } = request.params;
       const { userId } = request.user as { userId: string };
-      const character = await prisma.character.findFirst({ where: { id: characterId, userId } });
+      const character = await assertCanEditCharacter(userId, characterId);
       if (!character) return reply.status(404).send({ error: 'Personnage introuvable' });
 
       const quests = await prisma.quest.findMany({

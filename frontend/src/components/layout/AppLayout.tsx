@@ -30,7 +30,7 @@ export function AppLayout() {
   const location = useLocation();
   const { user, logout } = useAuth();
   const { invitations, fetchInvitations } = useGuildStore();
-  const { characters, selectedCharacterId, selectedCharacter, setSelectedCharacter, fetchCharacters } =
+  const { characters, managedCharacters, selectedCharacterId, selectedCharacter, setSelectedCharacter, fetchCharacters } =
     useCharacterStore();
   const { fetchProgress, totalPoints, reset } = useProgressStore();
   const { isDark, toggle } = useThemeStore();
@@ -173,23 +173,44 @@ export function AppLayout() {
               <Select
                 value={selectedCharacterId ?? undefined}
                 onChange={setSelectedCharacter}
-                style={{ minWidth: 180 }}
+                style={{ minWidth: 220 }}
                 placeholder="Choisir un personnage"
                 suffixIcon={<CaretDownOutlined />}
-                options={characters.map((c) => ({
-                  value: c.id,
-                  label: (
-                    <Space size={6}>
-                      <ClassAvatar className={c.characterClass} size={20} />
-                      <Text strong style={{ fontSize: 13 }}>
-                        {c.name}
-                      </Text>
-                      <Text type="secondary" style={{ fontSize: 11 }}>
-                        {c.characterClass} niv.{c.level}
-                      </Text>
-                    </Space>
-                  ),
-                }))}
+                options={[
+                  {
+                    label: 'Mes personnages',
+                    options: characters.map((c) => ({
+                      value: c.id,
+                      label: (
+                        <Space size={6}>
+                          <ClassAvatar className={c.characterClass} size={20} />
+                          <Text strong style={{ fontSize: 13 }}>{c.name}</Text>
+                          <Text type="secondary" style={{ fontSize: 11 }}>
+                            {c.characterClass} niv.{c.level}
+                          </Text>
+                        </Space>
+                      ),
+                    })),
+                  },
+                  ...(managedCharacters.length > 0
+                    ? [{
+                        label: 'Membres de ma guilde',
+                        options: managedCharacters.map((c) => ({
+                          value: c.id,
+                          label: (
+                            <Space size={6}>
+                              <ClassAvatar className={c.characterClass} size={20} />
+                              <Text strong style={{ fontSize: 13 }}>{c.name}</Text>
+                              <Text type="secondary" style={{ fontSize: 11 }}>
+                                {c.characterClass} niv.{c.level}
+                              </Text>
+                              <Tag color="gold" style={{ fontSize: 10, margin: 0 }} icon={<TeamOutlined />}>Guilde</Tag>
+                            </Space>
+                          ),
+                        })),
+                      }]
+                    : []),
+                ]}
               />
             )}
             {selectedCharacter && totalPoints > 0 && (

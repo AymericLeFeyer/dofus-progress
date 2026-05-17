@@ -62,4 +62,43 @@ export async function characterRoutes(
   fastify.get('/classes', async () => {
     return CHARACTER_CLASSES;
   });
+
+  // GET /api/characters/managed → membres de guildes dont je suis chef (hors miens)
+  fastify.get('/managed', async (request) => {
+    const { userId } = request.user as { userId: string };
+    const { prisma } = await import('../../../infrastructure/prisma/client');
+
+    // Mes persos chefs de guilde
+    const myCharacters = await prisma.character.findMany({ where: { userId }, select: { id: true } });
+    const myCharIds = myCharacters.map((c) => c.id);
+    const guildsILead = await prisma.guild.findMany({
+      where: { leaderId: { in: myCharIds } },
+      select: { id: true, name: true, imageUrl: true, leaderId: true },
+    });
+    if (guildsILead.length === 0) return [];
+
+    const members = await prisma.guildMember.findMany({
+      where: { guildId: { in: guildsILead.map((g) => g.id) } },
+      include: { character: true, guild: { select: { id: true, name: true, imageUrl: true } } },
+      orderBy: { joinedAt: 'asc' },
+    });
+
+    return members
+      .filter((m) => !myCharIds.includes(m.characterId)) // exclure mes propres persos
+      .map((m) => ({
+        id: m.character.id,
+        userId: m.character.userId,
+        name: m.character.name,
+        characterClass: m.character.class,
+        level: m.character.level,
+        createdAt: m.character.createdAt,
+        managedByGuild: true,
+        guildMember: {
+          guildId: m.guildId,
+          role: m.role,
+          joinedAt: m.joinedAt,
+          guild: m.guild,
+        },
+      }));
+  });
 }

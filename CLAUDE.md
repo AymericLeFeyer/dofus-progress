@@ -80,6 +80,7 @@ dofus-progress/
 - Impossible de retirer le **chef de guilde** via l'API
 - Les invitations expirent après **7 jours**
 - Un personnage ne peut pas être invité s'il a déjà une invitation **pending** pour la même guilde
+- Le **chef de guilde** peut éditer la progression (quêtes, succès, donjons, commentaires) de ses membres comme s'il s'agissait de son propre perso. Helper `assertCanEditCharacter(userId, characterId)` dans `progress.routes.ts` centralise cette règle.
 
 ## Routes API
 
@@ -93,6 +94,7 @@ POST   /api/characters
 PUT    /api/characters/:id
 DELETE /api/characters/:id
 GET    /api/characters/classes                 (liste des 19 classes)
+GET    /api/characters/managed                 (membres de guildes dont je suis chef, avec flag managedByGuild)
 
 POST   /api/guilds
 GET    /api/guilds/:id                         (avec membres)
@@ -151,6 +153,9 @@ docker-compose up
 
 ## Points d'attention
 
+- **Sélecteur de personnage global** (`AppLayout`) : affiche `characters` (mes persos) ET `managedCharacters` (membres de guildes dont je suis chef, tag "Guilde"). Le `selectedCharacterId` peut donc référencer un perso non possédé — toute la chaîne (progressStore, pages succès/quêtes/donjons, profil) doit tolérer ça. L'API backend autorise les écritures via `assertCanEditCharacter`.
+- **ProfilePage** : éditable si `characterId` est dans `characters` ou `managedCharacters`. Modal "Modifier une quête par nom" (`getAllQuests` cache l'index complet en mémoire). Bouton "Modifier le personnage" uniquement visible si propriétaire (pas chef éditant un membre).
+- **GuildPage** : le clic sur un membre **navigue vers `/profile/:characterId`** (plus de drawer interne — composant `MemberProgressDrawer` plus utilisé).
 - **Prisma generate après db push** : les types Prisma (`comment` sur QuestProgress et DungeonProgress) ne sont disponibles qu'après `docker-compose exec backend npx prisma db push` (regénère le client automatiquement via postinstall). Le backend TS ne compilera pas sans ça.
 - **CharacterCard cliquable** : dans CharactersPage, le clic sur la carte ouvre le drawer profil. Les boutons Éditer/Supprimer stopPropagation via leur positionnement dans le Card extra — pas de conflit.
 

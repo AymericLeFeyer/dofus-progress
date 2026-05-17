@@ -13,6 +13,7 @@ export interface Character {
   level: number;
   createdAt: string;
   guildMember?: GuildMemberInfo;
+  managedByGuild?: boolean;
 }
 
 export interface GuildMemberInfo {

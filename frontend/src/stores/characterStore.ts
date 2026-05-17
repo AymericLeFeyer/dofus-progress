@@ -6,6 +6,7 @@ const SELECTED_KEY = 'selectedCharacterId';
 
 interface CharacterStore {
   characters: Character[];
+  managedCharacters: Character[];
   classes: string[];
   isLoading: boolean;
   selectedCharacterId: string | null;
@@ -20,12 +21,17 @@ interface CharacterStore {
 
 export const useCharacterStore = create<CharacterStore>((set, get) => ({
   characters: [],
+  managedCharacters: [],
   classes: [],
   isLoading: false,
   selectedCharacterId: localStorage.getItem(SELECTED_KEY) ?? null,
   get selectedCharacter() {
-    const { characters, selectedCharacterId } = get();
-    return characters.find((c) => c.id === selectedCharacterId) ?? null;
+    const { characters, managedCharacters, selectedCharacterId } = get();
+    return (
+      characters.find((c) => c.id === selectedCharacterId) ??
+      managedCharacters.find((c) => c.id === selectedCharacterId) ??
+      null
+    );
   },
 
   setSelectedCharacter: (id) => {
@@ -37,16 +43,20 @@ export const useCharacterStore = create<CharacterStore>((set, get) => ({
   fetchCharacters: async () => {
     set({ isLoading: true });
     try {
-      const characters = await characterService.getAll();
+      const [characters, managedCharacters] = await Promise.all([
+        characterService.getAll(),
+        characterService.getManaged().catch(() => []),
+      ]);
       // Auto-select first character if saved ID is no longer valid
       const savedId = localStorage.getItem(SELECTED_KEY);
-      const stillValid = savedId && characters.some((c) => c.id === savedId);
+      const all = [...characters, ...managedCharacters];
+      const stillValid = savedId && all.some((c) => c.id === savedId);
       if (!stillValid && characters.length > 0) {
         const id = characters[0].id;
         localStorage.setItem(SELECTED_KEY, id);
-        set({ characters, isLoading: false, selectedCharacterId: id });
+        set({ characters, managedCharacters, isLoading: false, selectedCharacterId: id });
       } else {
-        set({ characters, isLoading: false });
+        set({ characters, managedCharacters, isLoading: false });
       }
     } catch {
       set({ isLoading: false });

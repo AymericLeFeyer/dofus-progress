@@ -21,6 +21,11 @@ export const characterService = {
     await api.delete(`/characters/${id}`);
   },
 
+  async getManaged(): Promise<Character[]> {
+    const { data } = await api.get<Character[]>('/characters/managed');
+    return data;
+  },
+
   async getClasses(): Promise<string[]> {
     const { data } = await api.get<string[]>('/characters/classes');
     return data;

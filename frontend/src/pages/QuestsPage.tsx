@@ -94,6 +94,7 @@ export function QuestsPage() {
   const [catSearch, setCatSearch] = useState('');
   const [questSearch, setQuestSearch] = useState('');
   const [hideCompleted, setHideCompleted] = useState(false);
+  const [hideCompletedCats, setHideCompletedCats] = useState(false);
   const [page, setPage] = useState(1);
 
   // Drawer
@@ -152,11 +153,24 @@ export function QuestsPage() {
     setCompleteAllLoading(false);
   };
 
+  const catIsComplete = useCallback(
+    (cat: QuestCategory & { questCount?: number }) => {
+      const catTotal = cat.questCount ?? cat.questIds?.length ?? 0;
+      const completed = questCategoryProgress[cat.id] ?? 0;
+      return catTotal > 0 && completed >= catTotal;
+    },
+    [questCategoryProgress],
+  );
+
   const filteredCats = useMemo(() => {
-    if (!catSearch) return categories;
-    const q = catSearch.toLowerCase();
-    return categories.filter((c) => c.name.fr.toLowerCase().includes(q));
-  }, [categories, catSearch]);
+    let result = categories;
+    if (hideCompletedCats) result = result.filter((c) => !catIsComplete(c));
+    if (catSearch) {
+      const q = catSearch.toLowerCase();
+      result = result.filter((c) => c.name.fr.toLowerCase().includes(q));
+    }
+    return result;
+  }, [categories, catSearch, hideCompletedCats, catIsComplete]);
 
   const filteredQuests = useMemo(() => {
     let result = quests;
@@ -175,12 +189,6 @@ export function QuestsPage() {
 
   // Revenir à la page 1 quand les filtres changent
   useEffect(() => { setPage(1); }, [questSearch, hideCompleted]);
-
-  const catIsComplete = (cat: QuestCategory & { questCount?: number }) => {
-    const catTotal = cat.questCount ?? cat.questIds?.length ?? 0;
-    const completed = questCategoryProgress[cat.id] ?? 0;
-    return catTotal > 0 && completed >= catTotal;
-  };
 
   const selectedCatTotal = selectedCat?.questCount ?? selectedCat?.questIds?.length ?? 0;
   const selectedCatCompleted = completedQuestCategoryProgress[selectedCat?.id ?? 0] ?? 0;
@@ -239,6 +247,10 @@ export function QuestsPage() {
               size="small"
               onChange={(e) => setCatSearch(e.target.value)}
             />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+              <Switch size="small" checked={hideCompletedCats} onChange={setHideCompletedCats} />
+              <Text style={{ fontSize: 11 }} type="secondary">Masquer les 100%</Text>
+            </div>
           </div>
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {loadingCats ? (
